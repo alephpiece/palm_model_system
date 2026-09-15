@@ -1,0 +1,89 @@
+# ------------------------------------------------------------------------------ #
+# This file is part of the PALM model system.
+#
+# PALM is free software: you can redistribute it and/or modify it under the terms
+# of the GNU General Public License as published by the Free Software Foundation,
+# either version 3 of the License, or (at your option) any later version.
+#
+# PALM is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
+# A PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along with
+# PALM. If not, see <http://www.gnu.org/licenses/>.
+#
+# Copyright 1997-2025  Leibniz Universitaet Hannover
+# ------------------------------------------------------------------------------ #
+#
+# Description:
+# ------------
+# Test configuration for tests.
+#
+# @Author Tobias Gronemeier
+# ------------------------------------------------------------------------------ #
+
+attributes:
+  author: First Surname, name@company.de
+  contact_person: First Surname, contact@company.de
+  acronym: Company
+  comment: created with palm_csd
+  location: T
+  site: Test
+  institution: Company A, City, Country
+
+settings:
+  rotation_angle: 0.0
+  lai_high_vegetation_default: 6.0
+  lai_low_vegetation_default: 3.0
+  lad_alpha: 5.0
+  lad_beta: 3.0
+  patch_height_default: 10.0
+  season: summer
+  vegetation_type_below_trees: 3
+
+output:
+  path: ./
+  file_out: test_installation_output
+  version: 1
+
+domain_root:
+  pixel_size: 1.0
+  input_lower_left_x: 0
+  input_lower_left_y: 0
+  nx: 9
+  ny: 9
+  dz: 1.0
+  bridge_depth: 3.0
+  generate_buildings_3d: False
+  replace_high_vegetation_types: False
+  generate_vegetation_patches: False
+  use_palm_z_axis: False
+  interpolate_terrain: False
+  generate_single_trees: False
+  overhanging_trees: False
+
+input:
+  path: ./
+  files:
+    x_utm: test_data.nc
+    y_utm: test_data.nc
+    lat: test_data.nc
+    lon: test_data.nc
+    zt: test_data.nc
+    buildings_2d: test_data.nc
+    building_id: test_data.nc
+    building_type: test_data.nc
+    bridges_2d: test_data.nc
+    bridges_id: test_data.nc
+    lai: test_data.nc
+    vegetation_type: test_data.nc
+    pavement_type: test_data.nc
+    water_type: test_data.nc
+    soil_type: test_data.nc
+    street_type: test_data.nc
+    street_crossings: test_data.nc
+    tree_height: test_data.nc
+    tree_crown_diameter: test_data.nc
+    tree_trunk_diameter: test_data.nc
+    tree_type: test_data.nc
+    vegetation_height: test_data.nc

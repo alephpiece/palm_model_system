@@ -1,0 +1,252 @@
+
+ ******************************    --------------------------------------------
+ * PALM (git SHA-1): 0e1544dc *    atmosphere - nested run without 1D - prerun
+ ******************************    --------------------------------------------
+
+ Date:               2025-07-24    Run:       cbl_particle_nested__gfortran_defa
+ Time:                 16:12:41    Run-No.:   00
+ Run on host:        gfortran_d
+ Number of PEs:               2    Processor grid (x,y): (   1,   2) calculated
+                                   A 1d-decomposition along y is used
+                                   Max. # of parallel I/O streams is     4
+
+ Nesting information:
+ --------------------
+ Nesting boundary conditions:      3d_nested
+ Nesting mode:                     two-way
+ Nesting-datatransfer mode:        one-sided (MPI3)
+ Nesting communication:            mixed
+
+ Nest id  parent  number       lower left coordinates         name
+ (*=me)     id    of PEs      x (m)     y (m)     z (m)
+  * 01      **         2         0.00      0.00      0.00     coarse
+    02      01         2       400.00    400.00      0.00     fine
+ ------------------------------------------------------------------------------
+
+ Numerical Schemes:
+ -----------------
+
+ --> Use the 1.5-order turbulence closure (LES mode).
+ --> Use the boussinesq approximation for the model equations.
+ --> Solve perturbation pressure via multigrid method (w-cycle)
+     number of grid levels:                     3
+     Gauss-Seidel red/black iterations:         2
+                      at initial start:       100   until timestep   0
+     fixed number of multigrid cycles:         2
+     perturbation pressure is calculated at every Runge-Kutta step
+ --> Momentum advection via Wicker-Skamarock-Scheme 5th order
+ --> Scalar advection via Wicker-Skamarock-Scheme 5th order
+ --> Loop optimization method: cache
+ --> Time differencing scheme: runge-kutta-3       
+ ------------------------------------------------------------------------------
+
+
+ Run time and time step information:
+ ----------------------------------
+
+ Timestep:             variable     maximum value: 20.000 s    CFL-factor: 0.90
+ Start time:              0.000 s
+ End time:              100.000 s
+
+
+ Computational grid and domain size:
+ ----------------------------------
+
+ Grid length:      dx =      50.000 m    dy =      50.000 m
+                dz(1) =      50.000 m
+
+ Domain size:       x =   2000.000 m     y =   2000.000 m  z(u) =   2025.000 m
+
+
+ Number of gridpoints (x,y,z):  (0:  39, 0:  39, 0:  41)
+ Subdomain size (x,y,z):        (    40,     20,     42)
+
+
+    Characteristic levels of the geo. wind component ug:
+
+       Height:           0.0  m
+       ug:              1.00  m/s
+       Gradient:        0.00  1/100s
+       Gridpoint:          0
+
+    Characteristic levels of the geo. wind component vg:
+
+       Height:           0.0  m
+       vg:              1.00  m/s
+       Gradient:        0.00  1/100s
+       Gridpoint:          0
+
+
+ Topography information:
+ ----------------------
+
+ Topography: flat                                    
+
+
+ Boundary conditions:
+ -------------------
+
+                     p                    uv                                  pt
+
+ B. bound.: p(0)     = p(1)   | uv(0)     = 0                     | pt(0)     = pt(1)            
+ T. bound.: p(nzt+1) = p(nzt) | uv(nzt+1) = ug(nzt+1), vg(nzt+1)  | pt(nzt+1) = pt(nzt) + dpt/dz_
+
+                     e
+
+ B. bound.: e(0)     = e(1)                                                                      
+ T. bound.: e(nzt+1) = e(nzt) = e(nzt-1)                                                         
+
+ Bottom surface fluxes are used in diffusion terms above surface grid points
+       Predefined constant heatflux:    0.100000 K m/s
+
+
+    Constant flux layer between bottom surface and first computational u,v-level:
+
+       z_mo =  25.00 m   z0 = 0.1000 m   z0h = 0.10000 m   kappa = 0.40
+       zeta value range:     -20.00 <= zeta <= 20.00
+
+
+ Lateral boundaries:
+       left/right:  cyclic              
+       north/south: cyclic              
+
+
+ Initial profiles:
+ ----------------
+
+    Characteristic levels of the initial temperature profile:
+
+       Height:             0.0   793.8   846.2  2025.0  m
+       Temperature:     285.00  285.00  295.00  310.05  K
+       Gradient:          0.00   32.00    0.70    0.00  K/100m
+       Gridpoint:            0      16      17      41
+
+
+ List output:
+ -----------
+
+    1D-Profiles:
+       Output every             9999999.90 s
+       Time averaged over          3600.00 s
+       Averaging input every          0.00 s
+
+
+ Data output:
+ -----------
+
+       Time averaged over          3600.00 s
+       Averaging input every          0.00 s
+
+    3D-Arrays:
+       Output format: netCDF 64bit offset                     
+
+       Arrays:  u, v, w,                                                             
+       Output every                3600.00 s  
+       Upper output limit at       2025.00 m  (GP   41)
+
+       Number of output time levels allowed: unlimited
+
+    3D-Arrays(time-averaged):
+       Output format: netCDF 64bit offset                     
+
+       Arrays:  u, v, w,                                                             
+       Output every                3600.00 s  
+       Time averaged over          3600.00 s
+       Averaging input every          0.00 s
+       Upper output limit at     2025.00 m  (GP   41)
+
+       Number of output time levels allowed: unlimited
+
+    Time series:
+       Output format: netCDF 64bit offset                     
+       Output every                   0.00 s
+
+ ------------------------------------------------------------------------------
+
+
+ Physical quantities:
+ -------------------
+
+    Geograph. latitude  :   latitude  =  55.0 degr
+    Geograph. longitude :   longitude =   0.0 degr
+    Rotation angle      :   rotation_angle =   0.0 degr
+    Angular velocity    :   omega  = 0.729E-04 rad/s
+    Coriolis parameter  :   f      =  0.000119 1/s
+                            f*     =  0.000084 1/s
+
+    Date and time at model start : 2019-06-21 12:00:00 +00
+
+    Gravity             :   g      =  9.8 m/s**2
+
+    Reference state used in buoyancy terms: initial_profile
+
+
+ Cloud physics quantities / methods:
+ ----------------------------------
+
+
+
+ LES / Turbulence quantities:
+ ---------------------------
+
+    Mixing length is limited close to surfaces
+
+
+ Actions during the simulation:
+ -----------------------------
+
+    Disturbance impulse (u,v) every :   9999999.90 s
+    Disturbance amplitude           :     0.25 m/s
+    Lower disturbance level         :   125.00 m (GP    3)
+    Upper disturbance level         :   625.00 m (GP   13)
+    Disturbances cease as soon as the disturbance energy exceeds 0.010 m**2/s**2
+    Random number generator used    : random-parallel
+
+    Particles:
+    ---------
+
+       Particle advection is active (switched on at t =     1.0 s)
+       Interpolation of particle velocities is done by using trilinear method
+       Boundary conditions: left/right: cyclic          north/south: cyclic         
+                            bottom:     reflect         top:         absorb         
+       Maximum particle age:                       100.0 s
+
+       Release of new particle generations every    20.0 s
+       Release of new particles stopped at t =      21.0 s
+
+       SGS velocity components are used for particle advection
+          minimum timestep for advection: 0.00020
+
+       Number of particles in total domain:          441
+
+       Number of particle groups:  1
+
+       Particle group  1:
+          Particle radius:  0.000E+00m
+          Particles are advected only passively (no inertia)
+
+          Boundaries of particle source: x:     0.0 -   1000.0 m
+                                         y:     0.0 -   1000.0 m
+                                         z:     5.0 -      5.1 m
+          Particle distances:  dx =     50.0 m  dy =     50.0 m  dz =      1.0 m
+
+ ------------------------------------------------------------------------------
+
+
+
+Run-control output:
+------------------
+
+RUN  ITER.  HHH:MM:SS.SS    DT(E)     UMAX     VMAX     WMAX     U*    W*      THETA*     Z_I     ENERG.   DISTENERG    DIVOLD     DIVNEW     UMAX(KJI)    VMAX(KJI)    WMAX(KJI)   ADVECX   ADVECY   MGCYC
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  0      0  000:00:00.00   9.0900X   1.1898D  1.2021D  0.1182  0.000  1.40   0.000E+00    800.  0.953E+00  0.103E-02  0.628E-03  0.717E-10    9   9  23    4   5  25    5  26   7    0.000    0.000       2
+  0      1  000:00:09.08   9.2200X   1.8297   1.7795  -0.5486  0.013  0.70  -0.112E+02    100.  0.955E+00  0.153E-02  0.511E-04  0.112E-10    3  15  20    3  20  15    4  20  17    0.000    0.000       2
+  0      2  000:00:18.31   9.7000X   1.8790   1.8592   0.6165  0.014  0.70  -0.104E+02    100.  0.954E+00  0.179E-02  0.439E-04  0.763E-07    3  15  20    3  20  15    4  15  18    0.000    0.000       2
+  0      3  000:00:28.01  10.3000X   1.8240   1.8348   0.6425  0.016  1.34  -0.894E+01    700.  0.953E+00  0.190E-02  0.431E-04  0.799E-07    3  15  20    3  20  15    4  15  18    0.000    0.000       2
+  0      4  000:00:38.31  10.9000X   1.7535   1.7902   0.6545  0.017  0.70  -0.748E+01    100.  0.952E+00  0.198E-02  0.441E-04  0.708E-07    3  15  20    3  20  15    4  15  18    0.000    0.000       2
+  0      5  000:00:49.21  11.2000X   1.6814   1.7413   0.6657  0.019  0.70  -0.633E+01    100.  0.952E+00  0.205E-02  0.456E-04  0.645E-07    3  15  20    3  20  15    4  15  18    0.000    0.000       2
+  0      6  000:01:00.40  11.3000X   1.6934   1.6997   0.6768  0.022  0.70  -0.559E+01    100.  0.951E+00  0.211E-02  0.459E-04  0.592E-07    3  21  17    3  17  21    4  15  18    0.000    0.000       2
+  0      7  000:01:11.70  11.5000X   1.6379   1.6543   0.6850  0.024  0.70  -0.486E+01    100.  0.951E+00  0.216E-02  0.458E-04  0.541E-07    3  21  17    3  20  15    4  15  18    0.000    0.000       2
+  0      8  000:01:23.20  11.6000X   1.5940   1.6158   0.6893  0.026  0.70  -0.432E+01    100.  0.950E+00  0.221E-02  0.466E-04  0.500E-07    4  21  17    4  17  21    4  15  17    0.000    0.000       2
+  0      9  000:01:34.80  11.7000X   1.5628   1.6124   0.6955  0.028  0.80  -0.390E+01    150.  0.950E+00  0.225E-02  0.471E-04  0.456E-07    4  21  17    4  17  21    4  15  17    0.000    0.000       2
+  0     10  000:01:46.50  12.0000X   1.5165   1.5669   0.7283  0.030  0.80  -0.357E+01    150.  0.950E+00  0.229E-02  0.476E-04  0.418E-07    3  22  18    4  17  21    2  17  20    0.000    0.000       2

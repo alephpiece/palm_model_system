@@ -1,0 +1,70 @@
+NCI0001:
+  loglevel: ERROR
+  message: |
+    netcdf_precision(...) = "..." must contain an "_"
+  description: |
+    Output types can be assigned a netCDF precision. For that, the output type has to start with an '_' character. See [netcdf_precision](../Namelists/#initialization_parameters--netcdf_precision) for details.
+
+NCI0002:
+  loglevel: ERROR
+  message: |
+    illegal precision in netcdf_precision(...) = "..."
+  description: |
+    See [NCI0001](#netcdf_interface_mod--NCI0001). Allowed netCDF precisions are 'NF90_REAL4' (single precision) or 'NF90_REAL8' (double precision).
+
+NCI0003:
+  loglevel: ERROR
+  message: |
+    unknown output type in netcdf_precision(...) = "..."
+  description: |
+    See [NCI0001](#netcdf_interface_mod--NCI0001. Allowed output types are 'xy', 'xz', 'yz', '2d', '3d', 'pr', 'ts', 'sp', 'prt' or 'all'.
+
+NCI0004:
+  loglevel: ERROR
+  message: |
+    netcdf_compression_level = ... out of range
+  description: |
+    See [netcdf_compression_level](../Namelists/#runtime_parameters--netcdf_compression_level) for allowed ranges. The allowed range depends on the chosen compression method (see [netcdf_compression_method](../Namelists/#runtime_parameters--netcdf_compression_method)).
+
+NCI0005:
+  loglevel: ERROR
+  message: |
+    netcdf_compression_nsd = ... out of range
+  description: |
+    See [netcdf_compression_nsd](../Namelists/#runtime_parameters--netcdf_compression_nsd) for the allowed range.
+
+NCI0006:
+  loglevel: ERROR
+  message: |
+    no grid defined for variable "..."
+  description: |
+    All output quantities need a ccordinate grid on which they are defined and output. See the [user-defined output documentation](https://palm.muk.uni-hannover.de/trac/wiki/doc/app/userint/output) for a detailed description on how to output your own quantities. If you did not define your own output quantities and if you did not change the code, then please inform the PALM develpers, e.g. by submitting a trouble ticket.
+
+NCI0007:
+  loglevel: INFO
+  message: |
+    It is not allowed to arrange more than 100 profiles with cross_profiles. Apart from that, all profiles are saved to the netCDF file.
+  description: |
+    This is a deprecated feature. All profiles are written to the netCDF file. Only the first 100 profiles will be plotted by `palmplot pr` with `var=cross_profiles` (default). To see all profiles, add the parameter `var=all` to `palmplot pr`.
+
+NCI0008:
+  loglevel: ERROR
+  message: |
+    mode "..." not supported
+  description: |
+    Possible modes are `3d`, `ma` (mask), `xy`, `xz`, `yz`, `pr` (profiles), `ps` (particle timeseries), `fl` (flight data), `ts` (timeseries), `spv (spectra). In addition, the extension (`_ext`) and the creation of netCDF files is possible.  Please inform the PALM developers, e.g. by submitting a trouble-ticket, if this error occurs.
+
+NCI0009:
+  loglevel: ERROR
+  message: |
+    unknown compression method netcdf_compression = "..."
+  description: |
+    See [netcdf_compression](../Namelists/#runtime_parameters--netcdf_compression) for allowed values.
+
+NCI0010:
+  loglevel: ERROR
+  message: |
+    preprocessor option "-D__netcdf4_compression" not set
+  description: |
+    For using [netcdf_compression](../Namelists/#runtime_parameters--netcdf_compression) and/or lossy compression via parameter [netcdf_compression_nsd](../Namelists/#runtime_parameters--netcdf_compression_nsd), <br>`-D__netcdf4_compression` has to be given as compiler option.
+

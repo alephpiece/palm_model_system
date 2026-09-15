@@ -1,0 +1,25 @@
+case: simple_wrf
+
+tasks:
+    - wrf
+    - wrf_rad
+
+paths:
+    base: 'tests/integration_tests/{case}{scenario}'
+
+
+output:
+    overwrite: true
+    #check_mass_balance: true
+
+domain:
+    nz: 25
+
+simulation:
+    origin_time: 2018-07-19 10:00:00
+    length: 3 h
+
+hinterp:
+    #validate: true
+
+verbosity: 2
