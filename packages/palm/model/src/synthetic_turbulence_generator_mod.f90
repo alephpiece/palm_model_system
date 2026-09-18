@@ -70,6 +70,7 @@
                debug_output_timestep,                                                              &
                dt_3d,                                                                              &
                e_init,                                                                             &
+               enable_openacc,                                                                     &
                humidity,                                                                           &
                initializing_actions,                                                               &
                intermediate_timestep_count,                                                        &
@@ -86,6 +87,11 @@
                syn_turb_gen,                                                                       &
                time_since_reference_point,                                                         &
                turbulent_inflow
+
+#if defined( _OPENACC )
+    USE openacc,                                                                                   &
+        ONLY:  acc_is_present
+#endif
 
     USE cpulog,                                                                                    &
         ONLY:  cpu_log,                                                                            &
@@ -105,12 +111,16 @@
                nzt,                                                                                &
                nx,                                                                                 &
                nxl,                                                                                &
+               nxlg,                                                                               &
                nxlu,                                                                               &
                nxr,                                                                                &
+               nxrg,                                                                               &
                ny,                                                                                 &
                nys,                                                                                &
+               nysg,                                                                               &
                nysv,                                                                               &
                nyn,                                                                                &
+               nyng,                                                                               &
                topo_flags
 
     USE kinds
@@ -173,10 +183,10 @@
     INTEGER(iwp) ::  stg_type_yz_small  !< MPI type for small z range
 #endif
 
-    INTEGER(iwp), DIMENSION(3) ::  nr_non_topo_xz = 0  !< number of non-topography grid points at xz cross-sections,
-                                                       !< required for bias correction of imposed perturbations
-    INTEGER(iwp), DIMENSION(3) ::  nr_non_topo_yz = 0  !< number of non-topography grid points at yz cross-sections,
-                                                       !< required for bias correction of imposed perturbations
+    INTEGER(iwp), DIMENSION(3,2) ::  nr_non_topo_xz = 0  !< number of non-topography grid points at xz cross-sections,
+                                                         !< (:,1)=south, (:,2)=north; for bias correction of perturbations
+    INTEGER(iwp), DIMENSION(3,2) ::  nr_non_topo_yz = 0  !< number of non-topography grid points at yz cross-sections,
+                                                         !< (:,1)=left, (:,2)=right; for bias correction of perturbations
 
 #if defined( __parallel )
     INTEGER(iwp), DIMENSION(:), ALLOCATABLE ::  displs_xz      !< displacement for MPI_GATHERV
@@ -271,8 +281,8 @@
     REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  fw_yz   !< velocity seed for w at yz plane
     REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  fwo_yz  !< velocity seed for w at yz plane with new random number
 
-    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  dist_xz !< disturbances for parallel/crosswind/vertical component at north/south boundary
-    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  dist_yz !< disturbances for parallel/crosswind/vertical component  at north/south boundary
+    REAL(wp), DIMENSION(:,:,:,:), ALLOCATABLE ::  dist_xz !< disturbances at N/S: (k,i,comp,side); side 1=south, 2=north
+    REAL(wp), DIMENSION(:,:,:,:), ALLOCATABLE ::  dist_yz !< disturbances at L/R: (k,j,comp,side); side 1=left, 2=right
 
 
     INTERFACE stg_actions
@@ -418,13 +428,14 @@
 
        ENDIF
 !
-!--    A 1d-decomposition along x or y is not allowed in combination with the STG if
-!--    perturbations are added on all lateral boundaries. In case of an idealized inflow from
-!--    the left, a 1d-decomposition along x or y is still allowed.
+!--    A 1d-decomposition along x or y with offline nesting / nesting requires local computation
+!--    of velocity seeds (distributed gather roots would coincide when npex=1 or npey=1).
        IF ( ( nesting_offline  .OR.  ( child_domain .AND.  rans_mode_parent  .AND.              &
             .NOT.  rans_mode ) )  .AND.  ( npex == 1  .OR.  npey == 1 ) )  THEN
-          message_string = 'illegal domain decomposition to be used with the STG'
-          CALL message( 'stg_check_parameters', 'STG0013', 1, 2, 0, 6, 0 )
+          compute_velocity_seeds_local = .TRUE.
+          message_string = 'npex=1 or npey=1 with STG + nesting_offline: ' //                  &
+                           'forcing compute_velocity_seeds_local = .TRUE.'
+          CALL message( 'stg_check_parameters', 'STG0013', 0, 0, 0, 6, 0 )
        ENDIF
 !
 !--    In case of neutral runs, either an STG_PROFILES file is required, or turbulence is
@@ -713,8 +724,8 @@
     tv  = 0.0_wp
     tw  = 0.0_wp
 
-    ALLOCATE ( dist_xz(nzb:nzt+1,nxl:nxr,3) )
-    ALLOCATE ( dist_yz(nzb:nzt+1,nys:nyn,3) )
+    ALLOCATE ( dist_xz(nzb:nzt+1,nxl:nxr,3,2) )
+    ALLOCATE ( dist_yz(nzb:nzt+1,nys:nyn,3,2) )
     dist_xz = 0.0_wp
     dist_yz = 0.0_wp
 !
@@ -851,11 +862,14 @@
 !-- In case of restart, calculate velocity seeds fu, fv, fw from former time step.
 !-- Bug: fu, fv, fw are different in those heights where a11, a22, a33 are 0 compared to the prerun.
 !-- This is mostly for k=nzt+1.
+!-- Process left and right separately so dual-side ownership (npex=1) does not overwrite indices.
+!-- Shared seed arrays: if the same PE owns both sides, recover from left only.
     IF ( TRIM( initializing_actions ) == 'read_restart_data' )  THEN
-       IF ( myidx == id_stg_left  .OR.  myidx == id_stg_right )  THEN
+!
+!--    Left boundary
+       IF ( myidx == id_stg_left  .AND.  id_stg_left >= 0 )  THEN
 
-          IF ( myidx == id_stg_left  )  i = -1
-          IF ( myidx == id_stg_right )  i = nxr+1
+          i = -1
 
           DO  j = nys, nyn
              DO  k = nzb, nzt+1
@@ -879,11 +893,40 @@
              ENDDO
           ENDDO
        ENDIF
+!
+!--    Right boundary (skip if same PE already recovered from left; shared seeds)
+       IF ( myidx == id_stg_right  .AND.  id_stg_right >= 0  .AND.                                 &
+            id_stg_right /= id_stg_left )  THEN
 
-       IF ( myidy == id_stg_south  .OR.  myidy == id_stg_north )  THEN
+          i = nxr+1
 
-          IF ( myidy == id_stg_south )  j = -1
-          IF ( myidy == id_stg_north )  j = nyn+1
+          DO  j = nys, nyn
+             DO  k = nzb, nzt+1
+                IF  ( a11(k) > 10E-8_wp )  THEN
+                   fu_yz(k,j) = ( u(k,j,i) - u_init(k) ) / a11(k)
+                ELSE
+                   fu_yz(k,j) = 10E-8_wp
+                ENDIF
+
+                IF  ( a22(k) > 10E-8_wp )  THEN
+                   fv_yz(k,j) = ( v(k,j,i) - a21(k) * fu_yz(k,j) - v_init(k) ) / a22(k)
+                ELSE
+                   fv_yz(k,j) = 10E-8_wp
+                ENDIF
+
+                IF  ( a33(k) > 10E-8_wp )  THEN
+                   fw_yz(k,j) = ( w(k,j,i) - a31(k) * fu_yz(k,j) - a32(k) * fv_yz(k,j) ) / a33(k)
+                ELSE
+                   fw_yz(k,j) = 10E-8_wp
+                ENDIF
+             ENDDO
+          ENDDO
+       ENDIF
+!
+!--    South boundary
+       IF ( myidy == id_stg_south  .AND.  id_stg_south >= 0 )  THEN
+
+          j = -1
 
           DO  i = nxl, nxr
              DO  k = nzb, nzt+1
@@ -912,53 +955,124 @@
              ENDDO
           ENDDO
        ENDIF
+!
+!--    North boundary (skip if same PE already recovered from south; shared seeds)
+       IF ( myidy == id_stg_north  .AND.  id_stg_north >= 0  .AND.                                 &
+            id_stg_north /= id_stg_south )  THEN
+
+          j = nyn+1
+
+          DO  i = nxl, nxr
+             DO  k = nzb, nzt+1
+                IF  ( a11(k) > 10E-8_wp )  THEN
+                   fu_xz(k,i) = ( u(k,j,i) - u_init(k) ) / a11(k)
+                ELSE
+                   fu_xz(k,i) = 10E-8_wp
+                ENDIF
+
+                IF  ( a22(k) > 10E-8_wp )  THEN
+                   fv_xz(k,i) = ( v(k,j,i) - a21(k) * fu_xz(k,i) - v_init(k) ) / a22(k)
+                ELSE
+                   fv_xz(k,i) = 10E-8_wp
+                ENDIF
+
+                IF  ( a33(k) > 10E-8_wp )  THEN
+                   fw_xz(k,i) = ( w(k,j,i) - a31(k) * fu_xz(k,i) - a32(k) * fv_xz(k,i) ) / a33(k)
+                ELSE
+                   fw_xz(k,i) = 10E-8_wp
+                ENDIF
+
+             ENDDO
+          ENDDO
+       ENDIF
     ENDIF
 !
 !-- Count the number of non-topography grid points at the boundaries where perturbations are imposed.
 !-- This number is later used for bias corrections of the perturbations, i.e. to force their mean to
 !-- be zero. Please note, due to the asymetry of u and v along x and y direction, respectively,
-!-- different cases must be distinguished.
-    IF ( myidx == id_stg_left  .OR.  myidx == id_stg_right )  THEN
+!-- different cases must be distinguished. Store per side: (:,1)=left/south, (:,2)=right/north.
+!
+!-- Left boundary
+    IF ( myidx == id_stg_left  .AND.  id_stg_left >= 0 )  THEN
+       nr_non_topo_yz_l = 0
 !
 !--    Number of grid points where perturbations are imposed on u
-       IF ( myidx == id_stg_left  )  i = nxl
-       IF ( myidx == id_stg_right )  i = nxr+1
-
+       i = nxl
        nr_non_topo_yz_l(1) = SUM( MERGE( 1, 0, BTEST( topo_flags(nzb:nzt,nys:nyn,i), 1 ) ) )
 !
 !--    Number of grid points where perturbations are imposed on v and w
-       IF ( myidx == id_stg_left  )  i = nxl-1
-       IF ( myidx == id_stg_right )  i = nxr+1
-
+       i = nxl-1
        nr_non_topo_yz_l(2) = SUM( MERGE( 1, 0, BTEST( topo_flags(nzb:nzt,nysv:nyn,i), 2 ) ) )
        nr_non_topo_yz_l(3) = SUM( MERGE( 1, 0, BTEST( topo_flags(nzb:nzt,nys:nyn,i), 3 ) ) )
 
 #if defined( __parallel )
-       CALL MPI_ALLREDUCE( nr_non_topo_yz_l, nr_non_topo_yz, 3, MPI_INTEGER, MPI_SUM, comm1dy, ierr )
+       CALL MPI_ALLREDUCE( nr_non_topo_yz_l, nr_non_topo_yz(:,1), 3, MPI_INTEGER, MPI_SUM,         &
+                           comm1dy, ierr )
 #else
-       nr_non_topo_yz = nr_non_topo_yz_l
+       nr_non_topo_yz(:,1) = nr_non_topo_yz_l
 #endif
     ENDIF
+!
+!-- Right boundary
+    IF ( myidx == id_stg_right  .AND.  id_stg_right >= 0 )  THEN
+       nr_non_topo_yz_l = 0
+!
+!--    Number of grid points where perturbations are imposed on u
+       i = nxr+1
+       nr_non_topo_yz_l(1) = SUM( MERGE( 1, 0, BTEST( topo_flags(nzb:nzt,nys:nyn,i), 1 ) ) )
+!
+!--    Number of grid points where perturbations are imposed on v and w
+       i = nxr+1
+       nr_non_topo_yz_l(2) = SUM( MERGE( 1, 0, BTEST( topo_flags(nzb:nzt,nysv:nyn,i), 2 ) ) )
+       nr_non_topo_yz_l(3) = SUM( MERGE( 1, 0, BTEST( topo_flags(nzb:nzt,nys:nyn,i), 3 ) ) )
 
-    IF ( myidy == id_stg_south  .OR.  myidy == id_stg_north )  THEN
+#if defined( __parallel )
+       CALL MPI_ALLREDUCE( nr_non_topo_yz_l, nr_non_topo_yz(:,2), 3, MPI_INTEGER, MPI_SUM,         &
+                           comm1dy, ierr )
+#else
+       nr_non_topo_yz(:,2) = nr_non_topo_yz_l
+#endif
+    ENDIF
+!
+!-- South boundary
+    IF ( myidy == id_stg_south  .AND.  id_stg_south >= 0 )  THEN
+       nr_non_topo_xz_l = 0
 !
 !--    Number of grid points where perturbations are imposed on v
-       IF ( myidy == id_stg_south )  j = nys
-       IF ( myidy == id_stg_north )  j = nyn+1
-
+       j = nys
        nr_non_topo_xz_l(2) = SUM( MERGE( 1, 0, BTEST( topo_flags(nzb:nzt,j,nxl:nxr), 2 ) ) )
 !
 !--    Number of grid points where perturbations are imposed on u and w
-       IF ( myidy == id_stg_south )  j = nys-1
-       IF ( myidy == id_stg_north )  j = nyn+1
-
+       j = nys-1
        nr_non_topo_xz_l(1) = SUM( MERGE( 1, 0, BTEST( topo_flags(nzb:nzt,j,nxlu:nxr), 1 ) ) )
        nr_non_topo_xz_l(3) = SUM( MERGE( 1, 0, BTEST( topo_flags(nzb:nzt,j,nxl:nxr), 3 ) ) )
 
 #if defined( __parallel )
-       CALL MPI_ALLREDUCE( nr_non_topo_xz_l, nr_non_topo_xz, 3, MPI_INTEGER, MPI_SUM, comm1dx, ierr )
+       CALL MPI_ALLREDUCE( nr_non_topo_xz_l, nr_non_topo_xz(:,1), 3, MPI_INTEGER, MPI_SUM,         &
+                           comm1dx, ierr )
 #else
-       nr_non_topo_xz = nr_non_topo_xz_l
+       nr_non_topo_xz(:,1) = nr_non_topo_xz_l
+#endif
+    ENDIF
+!
+!-- North boundary
+    IF ( myidy == id_stg_north  .AND.  id_stg_north >= 0 )  THEN
+       nr_non_topo_xz_l = 0
+!
+!--    Number of grid points where perturbations are imposed on v
+       j = nyn+1
+       nr_non_topo_xz_l(2) = SUM( MERGE( 1, 0, BTEST( topo_flags(nzb:nzt,j,nxl:nxr), 2 ) ) )
+!
+!--    Number of grid points where perturbations are imposed on u and w
+       j = nyn+1
+       nr_non_topo_xz_l(1) = SUM( MERGE( 1, 0, BTEST( topo_flags(nzb:nzt,j,nxlu:nxr), 1 ) ) )
+       nr_non_topo_xz_l(3) = SUM( MERGE( 1, 0, BTEST( topo_flags(nzb:nzt,j,nxl:nxr), 3 ) ) )
+
+#if defined( __parallel )
+       CALL MPI_ALLREDUCE( nr_non_topo_xz_l, nr_non_topo_xz(:,2), 3, MPI_INTEGER, MPI_SUM,         &
+                           comm1dx, ierr )
+#else
+       nr_non_topo_xz(:,2) = nr_non_topo_xz_l
 #endif
     ENDIF
 !
@@ -1273,9 +1387,14 @@
     USE exchange_horiz_mod,                                                                        &
         ONLY:  exchange_horiz
 
-    INTEGER(iwp) ::  i  !< grid index in x-direction
-    INTEGER(iwp) ::  j  !< loop index in y-direction
-    INTEGER(iwp) ::  k  !< loop index in z-direction
+    INTEGER(iwp) ::  i     !< grid index in x-direction
+    INTEGER(iwp) ::  i_u   !< x-index for u-component topography mask at L/R
+    INTEGER(iwp) ::  i_vw  !< x-index for v/w-component topography mask at L/R
+    INTEGER(iwp) ::  iside !< lateral side index: 1=left/south, 2=right/north
+    INTEGER(iwp) ::  j     !< loop index in y-direction
+    INTEGER(iwp) ::  j_u   !< y-index for u/w-component topography mask at N/S
+    INTEGER(iwp) ::  j_v   !< y-index for v-component topography mask at N/S
+    INTEGER(iwp) ::  k     !< loop index in z-direction
 
     LOGICAL  ::  stg_call = .FALSE.  !< control flag indicating whether turbulence was updated or only restored from last call
 
@@ -1355,71 +1474,83 @@
 
 !
 !-- Turbulence generation at left and/or right boundary
-    IF ( myidx == id_stg_left  .OR.  myidx == id_stg_right )  THEN
+!
+!-- Shared fu/fv/fw time update runs once if this PE owns either side
+    IF ( ( myidx == id_stg_left  .OR.  myidx == id_stg_right )  .AND.  stg_call )  THEN
+
+       DO  j = nys, nyn
+          DO  k = nzb, nzt + 1
+!
+!--          Update fu, fv, fw following Eq. 14 of Xie and Castro (2008)
+             IF ( tu(k) == 0.0_wp  .OR.  adjustment_step )  THEN
+                fu_yz(k,j) = fuo_yz(k,j)
+             ELSE
+                fu_yz(k,j) = fu_yz(k,j) * EXP( -pi * dt_stg * 0.5_wp / ( tu(k) + 1E-5_wp ) ) +  &
+                             fuo_yz(k,j) * SQRT( 1.0_wp - EXP( -pi * dt_stg /                   &
+                                                               ( tu(k) + 1E-5_wp ) ) )
+             ENDIF
+
+             IF ( tv(k) == 0.0_wp  .OR.  adjustment_step )  THEN
+                fv_yz(k,j) = fvo_yz(k,j)
+             ELSE
+                fv_yz(k,j) = fv_yz(k,j) * EXP( -pi * dt_stg * 0.5_wp / ( tv(k) + 1E-5_wp ) ) +  &
+                             fvo_yz(k,j) * SQRT( 1.0_wp - EXP( -pi * dt_stg /                   &
+                                                               ( tv(k) + 1E-5_wp ) ) )
+             ENDIF
+
+             IF ( tw(k) == 0.0_wp  .OR.  adjustment_step )  THEN
+                fw_yz(k,j) = fwo_yz(k,j)
+             ELSE
+                fw_yz(k,j) = fw_yz(k,j) * EXP( -pi * dt_stg * 0.5_wp / ( tw(k) + 1E-5_wp ) ) +  &
+                             fwo_yz(k,j) * SQRT( 1.0_wp - EXP( -pi * dt_stg /                   &
+                                                               ( tw(k) + 1E-5_wp ) ) )
+             ENDIF
+          ENDDO
+       ENDDO
+    ENDIF
+!
+!-- Fill and apply disturbances per lateral side (1=left, 2=right)
+    DO  iside = 1, 2
+
+       IF ( iside == 1 )  THEN
+          IF ( .NOT. ( myidx == id_stg_left  .AND.  id_stg_left >= 0 ) )  CYCLE
+          i_u  = nxl
+          i_vw = nxl - 1
+       ELSE
+          IF ( .NOT. ( myidx == id_stg_right  .AND.  id_stg_right >= 0 ) )  CYCLE
+          i_u  = nxr + 1
+          i_vw = nxr + 1
+       ENDIF
 !
 !--    Calculate new set of perturbations. Do this only at last RK3-substep and when dt_stg_call is
 !--    exceeded. Else the old set of perturbations is imposed
        IF ( stg_call )  THEN
 
-          DO  j = nys, nyn
-             DO  k = nzb, nzt + 1
-!
-!--             Update fu, fv, fw following Eq. 14 of Xie and Castro (2008)
-                IF ( tu(k) == 0.0_wp  .OR.  adjustment_step )  THEN
-                   fu_yz(k,j) = fuo_yz(k,j)
-                ELSE
-                   fu_yz(k,j) = fu_yz(k,j) * EXP( -pi * dt_stg * 0.5_wp / ( tu(k) + 1E-5_wp ) ) +  &
-                                fuo_yz(k,j) * SQRT( 1.0_wp - EXP( -pi * dt_stg /                   &
-                                                                  ( tu(k) + 1E-5_wp ) ) )
-                ENDIF
+          dist_yz(nzb,:,1,iside) = 0.0_wp
+          dist_yz(nzb,:,2,iside) = 0.0_wp
+          dist_yz(nzb,:,3,iside) = 0.0_wp
 
-                IF ( tv(k) == 0.0_wp  .OR.  adjustment_step )  THEN
-                   fv_yz(k,j) = fvo_yz(k,j)
-                ELSE
-                   fv_yz(k,j) = fv_yz(k,j) * EXP( -pi * dt_stg * 0.5_wp / ( tv(k) + 1E-5_wp ) ) +  &
-                                fvo_yz(k,j) * SQRT( 1.0_wp - EXP( -pi * dt_stg /                   &
-                                                                  ( tv(k) + 1E-5_wp ) ) )
-                ENDIF
-
-                IF ( tw(k) == 0.0_wp  .OR.  adjustment_step )  THEN
-                   fw_yz(k,j) = fwo_yz(k,j)
-                ELSE
-                   fw_yz(k,j) = fw_yz(k,j) * EXP( -pi * dt_stg * 0.5_wp / ( tw(k) + 1E-5_wp ) ) +  &
-                                fwo_yz(k,j) * SQRT( 1.0_wp - EXP( -pi * dt_stg /                   &
-                                                                  ( tw(k) + 1E-5_wp ) ) )
-                ENDIF
-             ENDDO
-          ENDDO
-
-          dist_yz(nzb,:,1) = 0.0_wp
-          dist_yz(nzb,:,2) = 0.0_wp
-          dist_yz(nzb,:,3) = 0.0_wp
-
-          IF ( myidx == id_stg_left  )  i = nxl
-          IF ( myidx == id_stg_right )  i = nxr+1
           DO  j = nys, nyn
              DO  k = nzb+1, nzt + 1
 !
 !--             Lund rotation following Eq. 17 in Xie and Castro (2008).
-                dist_yz(k,j,1) = a11(k) * fu_yz(k,j) *                                             &
-                                 MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 1 ) )
+                dist_yz(k,j,1,iside) = a11(k) * fu_yz(k,j) *                                       &
+                                 MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i_u), 1 ) )
 
              ENDDO
           ENDDO
 
-          IF ( myidx == id_stg_left  )  i = nxl-1
-          IF ( myidx == id_stg_right )  i = nxr+1
           DO  j = nys, nyn
              DO  k = nzb+1, nzt + 1
 !
 !--             Lund rotation following Eq. 17 in Xie and Castro (2008).
 !--             Additional factors are added to improve the variance of v and w experimental test
 !--             of 1.2
-                dist_yz(k,j,2) = ( a21(k) * fu_yz(k,j) + a22(k) * fv_yz(k,j) ) *                   &
-                                 MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 2 ) )
-                dist_yz(k,j,3) = ( a31(k) * fu_yz(k,j) + a32(k) * fv_yz(k,j) +                     &
+                dist_yz(k,j,2,iside) = ( a21(k) * fu_yz(k,j) + a22(k) * fv_yz(k,j) ) *             &
+                                 MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i_vw), 2 ) )
+                dist_yz(k,j,3,iside) = ( a31(k) * fu_yz(k,j) + a32(k) * fv_yz(k,j) +               &
                                    a33(k) * fw_yz(k,j) ) *                                         &
-                                 MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 3 ) )
+                                 MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i_vw), 3 ) )
 
              ENDDO
           ENDDO
@@ -1435,25 +1566,19 @@
 !
 !--       Sum up the original volume flows (with and without perturbations).
 !--       Note, for non-normal components (here v and w) it is actually no volume flow.
-          IF ( myidx == id_stg_left  )  i = nxl
-          IF ( myidx == id_stg_right )  i = nxr+1
+          mc_factor_l(1) = SUM( dist_yz(nzb:nzt,nys:nyn,1,iside) *                                 &
+                       MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(nzb:nzt,nys:nyn,i_u), 1 ) ) )
 
-          mc_factor_l(1) = SUM( dist_yz(nzb:nzt,nys:nyn,1) *                                       &
-                       MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(nzb:nzt,nys:nyn,i), 1 ) ) )
-
-          IF ( myidx == id_stg_left  )  i = nxl-1
-          IF ( myidx == id_stg_right )  i = nxr+1
-
-          mc_factor_l(2) = SUM( dist_yz(nzb:nzt,nysv:nyn,2) *                                      &
-                       MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(nzb:nzt,nysv:nyn,i), 2 ) ) )
-          mc_factor_l(3) = SUM( dist_yz(nzb:nzt,nys:nyn,3) *                                       &
-                       MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(nzb:nzt,nys:nyn,i), 3 ) ) )
+          mc_factor_l(2) = SUM( dist_yz(nzb:nzt,nysv:nyn,2,iside) *                                &
+                       MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(nzb:nzt,nysv:nyn,i_vw), 2 ) ) )
+          mc_factor_l(3) = SUM( dist_yz(nzb:nzt,nys:nyn,3,iside) *                                 &
+                       MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(nzb:nzt,nys:nyn,i_vw), 3 ) ) )
 !
 !--       Also determine maximum disturbance amplitude on w-component. This is used to scale
 !--       temperature perturbations accordingly.
           IF ( disturb_theta )  THEN
              DO  k = nzb, nzt+1
-                max_dist_w_yz(k) = MAXVAL( ABS( dist_yz(k,nys:nyn,3) ) )
+                max_dist_w_yz(k) = MAXVAL( ABS( dist_yz(k,nys:nyn,3,iside) ) )
              ENDDO
           ENDIF
 
@@ -1469,26 +1594,19 @@
 #endif
 !
 !--       Calculate correction factor and force zero mean perturbations.
-          mc_factor = mc_factor / REAL( nr_non_topo_yz, KIND = wp )
+          mc_factor = mc_factor / REAL( nr_non_topo_yz(:,iside), KIND = wp )
 
-          IF ( myidx == id_stg_left  )  i = nxl
-          IF ( myidx == id_stg_right )  i = nxr+1
+          dist_yz(:,nys:nyn,1,iside) = ( dist_yz(:,nys:nyn,1,iside) - mc_factor(1) ) *             &
+                                 MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(:,nys:nyn,i_u), 1 ) )
 
-          dist_yz(:,nys:nyn,1) = ( dist_yz(:,nys:nyn,1) - mc_factor(1) ) *                         &
-                                 MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(:,nys:nyn,i), 1 ) )
+          dist_yz(:,nys:nyn,2,iside) = ( dist_yz(:,nys:nyn,2,iside) - mc_factor(2) ) *             &
+                                 MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(:,nys:nyn,i_vw), 2 ) )
 
-
-          IF ( myidx == id_stg_left  )  i = nxl-1
-          IF ( myidx == id_stg_right )  i = nxr+1
-
-          dist_yz(:,nys:nyn,2) = ( dist_yz(:,nys:nyn,2) - mc_factor(2) ) *                         &
-                                 MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(:,nys:nyn,i), 2 ) )
-
-          dist_yz(:,nys:nyn,3) = ( dist_yz(:,nys:nyn,3) - mc_factor(3) ) *                         &
-                                 MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(:,nys:nyn,i), 3 ) )
+          dist_yz(:,nys:nyn,3,iside) = ( dist_yz(:,nys:nyn,3,iside) - mc_factor(3) ) *             &
+                                 MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(:,nys:nyn,i_vw), 3 ) )
 !
 !--       Add disturbances on the left domain boundary.
-          IF ( myidx == id_stg_left  )  THEN
+          IF ( iside == 1 )  THEN
 !
 !--          For the left boundary distinguish between mesoscale offline / self nesting and
 !--          turbulent inflow at the left boundary only. In the latter case turbulence is imposed on
@@ -1498,15 +1616,15 @@
 !--             Add disturbance at the inflow
                 DO  j = nys, nyn
                    DO  k = nzb, nzt+1
-                      u(k,j,-nbgp+1:0) = ( mean_inflow_profiles(k,1) + dist_yz(k,j,1) ) *          &
+                      u(k,j,-nbgp+1:0) = ( mean_inflow_profiles(k,1) + dist_yz(k,j,1,iside) ) *    &
                                          MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,0), 1 ) )
-                      w(k,j,-nbgp:-1)  = dist_yz(k,j,3) *                                          &
+                      w(k,j,-nbgp:-1)  = dist_yz(k,j,3,iside) *                                    &
                                          MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,-1), 3 ) )
                    ENDDO
                 ENDDO
                 DO  j = nysv, nyn
                    DO  k = nzb, nzt+1
-                      v(k,j,-nbgp:-1)  = ( mean_inflow_profiles(k,2) + dist_yz(k,j,2) ) *          &
+                      v(k,j,-nbgp:-1)  = ( mean_inflow_profiles(k,2) + dist_yz(k,j,2,iside) ) *    &
                                       MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,-nbgp:-1), 2 ) )
                    ENDDO
                 ENDDO
@@ -1514,16 +1632,16 @@
 
                 DO  j = nys, nyn
                    DO  k = nzb+1, nzt
-                      u(k,j,0)   = ( u(k,j,0)  + dist_yz(k,j,1) ) *                                &
+                      u(k,j,0)   = ( u(k,j,0)  + dist_yz(k,j,1,iside) ) *                          &
                                    MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,0), 1 ) )
                       u(k,j,-1)  = u(k,j,0)
-                      w(k,j,-1)  = ( w(k,j,-1) + dist_yz(k,j,3) ) *                                &
+                      w(k,j,-1)  = ( w(k,j,-1) + dist_yz(k,j,3,iside) ) *                          &
                                    MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,-1), 3 ) )
                    ENDDO
                 ENDDO
                 DO  j = nysv, nyn
                    DO  k = nzb, nzt+1
-                      v(k,j,-1)  = ( v(k,j,nxr+1) + dist_yz(k,j,2) ) *                             &
+                      v(k,j,-1)  = ( v(k,j,nxr+1) + dist_yz(k,j,2,iside) ) *                       &
                                    MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,-1), 2 ) )
                    ENDDO
                 ENDDO
@@ -1538,29 +1656,28 @@
                 IF ( disturb_theta )  THEN
                    DO  j = nys, nyn
                       DO  k = nzb+1, nzt
-                         dist_pt = MIN( 1.0_wp, ABS( dist_yz(k,j,3) )                              &
+                         dist_pt = MIN( 1.0_wp, ABS( dist_yz(k,j,3,iside) )                        &
                                                / ( max_dist_w_yz(k) + 1E-10_wp ) ) * theta_amplitude
-                         pt(k,j,-1) = pt(k,j,-1) + SIGN( dist_pt, dist_yz(k,j,3) )                 &
+                         pt(k,j,-1) = pt(k,j,-1) + SIGN( dist_pt, dist_yz(k,j,3,iside) )           &
                                       * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,-1), 0 ) )
                       ENDDO
                    ENDDO
                 ENDIF
              ENDIF
-          ENDIF
 !
 !--       Add disturbances on the right domain boundary.
-          IF ( myidx == id_stg_right  )  THEN
+          ELSE
              DO  j = nys, nyn
                 DO  k = nzb+1, nzt
-                   u(k,j,nxr+1) = ( u(k,j,nxr+1) + dist_yz(k,j,1) ) *                              &
+                   u(k,j,nxr+1) = ( u(k,j,nxr+1) + dist_yz(k,j,1,iside) ) *                        &
                                   MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,nxr+1), 1 ) )
-                   w(k,j,nxr+1) = ( w(k,j,nxr+1) + dist_yz(k,j,3) ) *                              &
+                   w(k,j,nxr+1) = ( w(k,j,nxr+1) + dist_yz(k,j,3,iside) ) *                        &
                                   MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,nxr+1), 3 ) )
                 ENDDO
              ENDDO
              DO  j = nysv, nyn
                 DO  k = nzb+1, nzt
-                   v(k,j,nxr+1) = ( v(k,j,nxr+1) + dist_yz(k,j,2) ) *                              &
+                   v(k,j,nxr+1) = ( v(k,j,nxr+1) + dist_yz(k,j,2,iside) ) *                        &
                                   MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,nxr+1), 2 ) )
                 ENDDO
              ENDDO
@@ -1568,84 +1685,96 @@
              IF ( disturb_theta )  THEN
                 DO  j = nys, nyn
                    DO  k = nzb+1, nzt
-                      dist_pt = MIN( 1.0_wp, ABS( dist_yz(k,j,3) )                                 &
+                      dist_pt = MIN( 1.0_wp, ABS( dist_yz(k,j,3,iside) )                           &
                                                / ( max_dist_w_yz(k) + 1E-10_wp ) ) * theta_amplitude
-                      pt(k,j,nxr+1) = pt(k,j,nxr+1) + SIGN( dist_pt, dist_yz(k,j,3) )              &
+                      pt(k,j,nxr+1) = pt(k,j,nxr+1) + SIGN( dist_pt, dist_yz(k,j,3,iside) )        &
                                       * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,nxr+1), 0 ) )
                    ENDDO
                 ENDDO
              ENDIF
           ENDIF
        ENDIF
-    ENDIF
+    ENDDO
 !
 !-- Turbulence generation at north and south boundary
-    IF ( myidy == id_stg_north  .OR.  myidy == id_stg_south )  THEN
+!
+!-- Shared fu/fv/fw time update runs once if this PE owns either side
+    IF ( ( myidy == id_stg_north  .OR.  myidy == id_stg_south )  .AND.  stg_call )  THEN
+
+       DO  i = nxl, nxr
+          DO  k = nzb, nzt + 1
+!
+!--          Update fu, fv, fw following Eq. 14 of Xie and Castro (2008)
+             IF ( tu(k) == 0.0_wp  .OR.  adjustment_step )  THEN
+                fu_xz(k,i) = fuo_xz(k,i)
+             ELSE
+                fu_xz(k,i) = fu_xz(k,i) * EXP( -pi * dt_stg * 0.5_wp / ( tu(k) + 1E-5_wp ) ) +  &
+                             fuo_xz(k,i) * SQRT( 1.0_wp - EXP( -pi * dt_stg /                   &
+                                                               ( tu(k) + 1E-5_wp ) ) )
+             ENDIF
+
+             IF ( tv(k) == 0.0_wp  .OR.  adjustment_step )  THEN
+                fv_xz(k,i) = fvo_xz(k,i)
+             ELSE
+                fv_xz(k,i) = fv_xz(k,i) * EXP( -pi * dt_stg * 0.5_wp / ( tv(k) + 1E-5_wp ) ) +  &
+                             fvo_xz(k,i) * SQRT( 1.0_wp - EXP( -pi * dt_stg /                   &
+                                                               ( tv(k) + 1E-5_wp ) ) )
+             ENDIF
+
+             IF ( tw(k) == 0.0_wp  .OR.  adjustment_step )  THEN
+                fw_xz(k,i) = fwo_xz(k,i)
+             ELSE
+                fw_xz(k,i) = fw_xz(k,i) * EXP( -pi * dt_stg * 0.5_wp / ( tw(k) + 1E-5_wp ) ) +  &
+                             fwo_xz(k,i) * SQRT( 1.0_wp - EXP( -pi * dt_stg /                   &
+                                                               ( tw(k) + 1E-5_wp ) ) )
+             ENDIF
+          ENDDO
+       ENDDO
+    ENDIF
+!
+!-- Fill and apply disturbances per lateral side (1=south, 2=north)
+    DO  iside = 1, 2
+
+       IF ( iside == 1 )  THEN
+          IF ( .NOT. ( myidy == id_stg_south  .AND.  id_stg_south >= 0 ) )  CYCLE
+          j_v = nys
+          j_u = nys - 1
+       ELSE
+          IF ( .NOT. ( myidy == id_stg_north  .AND.  id_stg_north >= 0 ) )  CYCLE
+          j_v = nyn + 1
+          j_u = nyn + 1
+       ENDIF
 !
 !--    Calculate new set of perturbations. Do this only at last RK3-substep and when dt_stg_call is
 !--    exceeded. Else the old set of perturbations is imposed
        IF ( stg_call )  THEN
-          DO  i = nxl, nxr
-             DO  k = nzb, nzt + 1
-!
-!--             Update fu, fv, fw following Eq. 14 of Xie and Castro (2008)
-                IF ( tu(k) == 0.0_wp  .OR.  adjustment_step )  THEN
-                   fu_xz(k,i) = fuo_xz(k,i)
-                ELSE
-                   fu_xz(k,i) = fu_xz(k,i) * EXP( -pi * dt_stg * 0.5_wp / ( tu(k) + 1E-5_wp ) ) +  &
-                                fuo_xz(k,i) * SQRT( 1.0_wp - EXP( -pi * dt_stg /                   &
-                                                                  ( tu(k) + 1E-5_wp ) ) )
-                ENDIF
 
-                IF ( tv(k) == 0.0_wp  .OR.  adjustment_step )  THEN
-                   fv_xz(k,i) = fvo_xz(k,i)
-                ELSE
-                   fv_xz(k,i) = fv_xz(k,i) * EXP( -pi * dt_stg * 0.5_wp / ( tv(k) + 1E-5_wp ) ) +  &
-                                fvo_xz(k,i) * SQRT( 1.0_wp - EXP( -pi * dt_stg /                   &
-                                                                  ( tv(k) + 1E-5_wp ) ) )
-                ENDIF
+          dist_xz(nzb,:,1,iside) = 0.0_wp
+          dist_xz(nzb,:,2,iside) = 0.0_wp
+          dist_xz(nzb,:,3,iside) = 0.0_wp
 
-                IF ( tw(k) == 0.0_wp  .OR.  adjustment_step )  THEN
-                   fw_xz(k,i) = fwo_xz(k,i)
-                ELSE
-                   fw_xz(k,i) = fw_xz(k,i) * EXP( -pi * dt_stg * 0.5_wp / ( tw(k) + 1E-5_wp ) ) +  &
-                                fwo_xz(k,i) * SQRT( 1.0_wp - EXP( -pi * dt_stg /                   &
-                                                                  ( tw(k) + 1E-5_wp ) ) )
-                ENDIF
-             ENDDO
-          ENDDO
-
-
-          dist_xz(nzb,:,1) = 0.0_wp
-          dist_xz(nzb,:,2) = 0.0_wp
-          dist_xz(nzb,:,3) = 0.0_wp
-
-          IF ( myidy == id_stg_south  ) j = nys
-          IF ( myidy == id_stg_north )  j = nyn+1
           DO  i = nxl, nxr
              DO  k = nzb+1, nzt + 1
 !
 !--             Lund rotation following Eq. 17 in Xie and Castro (2008).
 !--             Additional factors are added to improve the variance of v and w
                 !experimental test of 1.2
-                dist_xz(k,i,2) = ( a21(k) * fu_xz(k,i) + a22(k) * fv_xz(k,i) ) *                   &
-                                 MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 2 ) )
+                dist_xz(k,i,2,iside) = ( a21(k) * fu_xz(k,i) + a22(k) * fv_xz(k,i) ) *             &
+                                 MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j_v,i), 2 ) )
              ENDDO
           ENDDO
 
-          IF ( myidy == id_stg_south  ) j = nys-1
-          IF ( myidy == id_stg_north )  j = nyn+1
           DO  i = nxl, nxr
              DO  k = nzb+1, nzt + 1
 !
 !--             Lund rotation following Eq. 17 in Xie and Castro (2008).
 !--             Additional factors are added to improve the variance of v and w
-                dist_xz(k,i,1) = a11(k) * fu_xz(k,i) *                                             &
-                                 MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 1 ) )
+                dist_xz(k,i,1,iside) = a11(k) * fu_xz(k,i) *                                       &
+                                 MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j_u,i), 1 ) )
 
-                dist_xz(k,i,3) = ( a31(k) * fu_xz(k,i) + a32(k) * fv_xz(k,i) +                     &
+                dist_xz(k,i,3,iside) = ( a31(k) * fu_xz(k,i) + a32(k) * fv_xz(k,i) +               &
                                    a33(k) * fw_xz(k,i) ) *                                         &
-                                 MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 3 ) )
+                                 MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j_u,i), 3 ) )
              ENDDO
           ENDDO
        ENDIF
@@ -1659,25 +1788,19 @@
           mc_factor_l = 0.0_wp
           mc_factor   = 0.0_wp
 
-          IF ( myidy == id_stg_south  ) j = nys
-          IF ( myidy == id_stg_north )  j = nyn+1
+          mc_factor_l(2) = SUM( dist_xz(nzb:nzt,nxl:nxr,2,iside) *                                 &
+                           MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(nzb:nzt,j_v,nxl:nxr), 2 ) ) )
 
-          mc_factor_l(2) = SUM( dist_xz(nzb:nzt,nxl:nxr,2) *                                       &
-                           MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(nzb:nzt,j,nxl:nxr), 2 ) ) )
-
-          IF ( myidy == id_stg_south ) j = nys-1
-          IF ( myidy == id_stg_north ) j = nyn+1
-
-          mc_factor_l(1) = SUM( dist_xz(nzb:nzt,nxlu:nxr,1) *                                      &
-                           MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(nzb:nzt,j,nxlu:nxr), 1 ) ) )
-          mc_factor_l(3) = SUM( dist_xz(nzb:nzt,nxl:nxr,3) *                                       &
-                           MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(nzb:nzt,j,nxl:nxr), 3 ) ) )
+          mc_factor_l(1) = SUM( dist_xz(nzb:nzt,nxlu:nxr,1,iside) *                                &
+                           MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(nzb:nzt,j_u,nxlu:nxr), 1 ) ) )
+          mc_factor_l(3) = SUM( dist_xz(nzb:nzt,nxl:nxr,3,iside) *                                 &
+                           MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(nzb:nzt,j_u,nxl:nxr), 3 ) ) )
 !
 !--       Also determine maximum disturbance amplitude on w-component. This is used to scale
 !--       temperature perturbations accordingly.
           IF ( disturb_theta )  THEN
              DO  k = nzb, nzt+1
-                max_dist_w_xz(k) = MAXVAL( ABS( dist_xz(k,nxl:nxr,3) ) )
+                max_dist_w_xz(k) = MAXVAL( ABS( dist_xz(k,nxl:nxr,3,iside) ) )
              ENDDO
           ENDIF
 
@@ -1692,38 +1815,31 @@
           mc_factor   = mc_factor_l
 #endif
 
-          mc_factor = mc_factor / REAL( nr_non_topo_xz, KIND = wp )
+          mc_factor = mc_factor / REAL( nr_non_topo_xz(:,iside), KIND = wp )
 
-          IF ( myidy == id_stg_south ) j = nys
-          IF ( myidy == id_stg_north ) j = nyn+1
+          dist_xz(:,nxl:nxr,2,iside) = ( dist_xz(:,nxl:nxr,2,iside) - mc_factor(2) ) *             &
+                                 MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(:,j_v,nxl:nxr), 2 ) )
 
-          dist_xz(:,nxl:nxr,2) = ( dist_xz(:,nxl:nxr,2) - mc_factor(2) ) *                         &
-                                 MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(:,j,nxl:nxr), 2 ) )
+          dist_xz(:,nxl:nxr,1,iside) = ( dist_xz(:,nxl:nxr,1,iside) - mc_factor(1) ) *             &
+                                 MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(:,j_u,nxl:nxr), 1 ) )
 
-
-          IF ( myidy == id_stg_south ) j = nys-1
-          IF ( myidy == id_stg_north ) j = nyn+1
-
-          dist_xz(:,nxl:nxr,1) = ( dist_xz(:,nxl:nxr,1) - mc_factor(1) ) *                         &
-                                 MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(:,j,nxl:nxr), 1 ) )
-
-          dist_xz(:,nxl:nxr,3) = ( dist_xz(:,nxl:nxr,3) - mc_factor(3) ) *                         &
-                                 MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(:,j,nxl:nxr), 3 ) )
+          dist_xz(:,nxl:nxr,3,iside) = ( dist_xz(:,nxl:nxr,3,iside) - mc_factor(3) ) *             &
+                                 MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(:,j_u,nxl:nxr), 3 ) )
 !
 !--       Add disturbances on the southern domain boundary.
-          IF ( myidy == id_stg_south )  THEN
+          IF ( iside == 1 )  THEN
              DO  i = nxl, nxr
                 DO  k = nzb+1, nzt
-                   v(k,0,i)  = ( v(k,0,i)  + dist_xz(k,i,2) )                                      &
+                   v(k,0,i)  = ( v(k,0,i)  + dist_xz(k,i,2,iside) )                                &
                                * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,0,i), 2 ) )
                    v(k,-1,i) = v(k,0,i)
-                   w(k,-1,i) = ( w(k,-1,i) + dist_xz(k,i,3) )                                      &
+                   w(k,-1,i) = ( w(k,-1,i) + dist_xz(k,i,3,iside) )                                &
                                * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,-1,i), 3 ) )
                 ENDDO
              ENDDO
              DO  i = nxlu, nxr
                 DO  k = nzb+1, nzt
-                   u(k,-1,i) = ( u(k,-1,i) + dist_xz(k,i,1) )                                      &
+                   u(k,-1,i) = ( u(k,-1,i) + dist_xz(k,i,1,iside) )                                &
                                * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,-1,i), 1 ) )
                 ENDDO
              ENDDO
@@ -1738,30 +1854,29 @@
              IF ( disturb_theta )  THEN
                 DO  i = nxl, nxr
                    DO  k = nzb+1, nzt
-                      dist_pt = MIN( 1.0_wp, ABS( dist_xz(k,i,3) )                                 &
+                      dist_pt = MIN( 1.0_wp, ABS( dist_xz(k,i,3,iside) )                           &
                                              / ( max_dist_w_xz(k) + 1E-10_wp ) ) * theta_amplitude
-                      pt(k,-1,i) = pt(k,-1,i) + SIGN( dist_pt, dist_xz(k,i,3) )                    &
+                      pt(k,-1,i) = pt(k,-1,i) + SIGN( dist_pt, dist_xz(k,i,3,iside) )              &
                                    * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,-1,i), 0 ) )
                    ENDDO
                 ENDDO
              ENDIF
 
-          ENDIF
 !
 !--       Add disturbances on the northern domain boundary.
-          IF ( myidy == id_stg_north  )  THEN
+          ELSE
 
              DO  i = nxl, nxr
                 DO  k = nzb+1, nzt
-                   v(k,nyn+1,i) = ( v(k,nyn+1,i) + dist_xz(k,i,2) ) *                              &
+                   v(k,nyn+1,i) = ( v(k,nyn+1,i) + dist_xz(k,i,2,iside) ) *                        &
                                   MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,nyn+1,i), 2 ) )
-                   w(k,nyn+1,i) = ( w(k,nyn+1,i) + dist_xz(k,i,3) ) *                              &
+                   w(k,nyn+1,i) = ( w(k,nyn+1,i) + dist_xz(k,i,3,iside) ) *                        &
                                   MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,nyn+1,i), 3 ) )
                 ENDDO
              ENDDO
              DO  i = nxlu, nxr
                 DO  k = nzb+1, nzt
-                   u(k,nyn+1,i) = ( u(k,nyn+1,i) + dist_xz(k,i,1) ) *                              &
+                   u(k,nyn+1,i) = ( u(k,nyn+1,i) + dist_xz(k,i,1,iside) ) *                        &
                                   MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,nyn+1,i), 1 ) )
                 ENDDO
              ENDDO
@@ -1769,16 +1884,46 @@
              IF ( disturb_theta )  THEN
                 DO  i = nxl, nxr
                    DO  k = nzb+1, nzt
-                      dist_pt = MIN( 1.0_wp, ABS( dist_xz(k,i,3) )                                 &
+                      dist_pt = MIN( 1.0_wp, ABS( dist_xz(k,i,3,iside) )                           &
                                              / ( max_dist_w_xz(k) + 1E-10_wp ) ) * theta_amplitude
-                      pt(k,nyn+1,i) = pt(k,nyn+1,i) + SIGN( dist_pt, dist_xz(k,i,3) )              &
+                      pt(k,nyn+1,i) = pt(k,nyn+1,i) + SIGN( dist_pt, dist_xz(k,i,3,iside) )        &
                                       * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,nyn+1,i), 0 ) )
                    ENDDO
                 ENDDO
              ENDIF
           ENDIF
        ENDIF
+    ENDDO
+!
+!-- Push only STG-perturbed boundary planes to the device before halo exchange.
+#if defined( _OPENACC )
+    IF ( enable_openacc  .AND.  acc_is_present( u ) )  THEN
+       IF ( myidx == id_stg_left  .AND.  id_stg_left >= 0 )  THEN
+          !$ACC UPDATE DEVICE(u(:,:,nxlg:nxl), v(:,:,nxlg:nxl), w(:,:,nxlg:nxl))
+          IF ( disturb_theta )  THEN
+             !$ACC UPDATE DEVICE(pt(:,:,nxlg:nxl))
+          ENDIF
+       ENDIF
+       IF ( myidx == id_stg_right  .AND.  id_stg_right >= 0 )  THEN
+          !$ACC UPDATE DEVICE(u(:,:,nxr:nxrg), v(:,:,nxr:nxrg), w(:,:,nxr:nxrg))
+          IF ( disturb_theta )  THEN
+             !$ACC UPDATE DEVICE(pt(:,:,nxr:nxrg))
+          ENDIF
+       ENDIF
+       IF ( myidy == id_stg_south  .AND.  id_stg_south >= 0 )  THEN
+          !$ACC UPDATE DEVICE(u(:,nysg:nys,:), v(:,nysg:nys,:), w(:,nysg:nys,:))
+          IF ( disturb_theta )  THEN
+             !$ACC UPDATE DEVICE(pt(:,nysg:nys,:))
+          ENDIF
+       ENDIF
+       IF ( myidy == id_stg_north  .AND.  id_stg_north >= 0 )  THEN
+          !$ACC UPDATE DEVICE(u(:,nyn:nyng,:), v(:,nyn:nyng,:), w(:,nyn:nyng,:))
+          IF ( disturb_theta )  THEN
+             !$ACC UPDATE DEVICE(pt(:,nyn:nyng,:))
+          ENDIF
+       ENDIF
     ENDIF
+#endif
 !
 !-- Exchange ghost points.
     CALL exchange_horiz( u, nbgp )
@@ -1947,10 +2092,12 @@
                          recv_count_yz, displs_yz, stg_type_yz, id_left, comm1dx, ierr )
 !
 !--    If required, gather the same velocity seed matrix on right boundary mpi ranks (in offline
-!--    nesting for example).
+!--    nesting for example). Skip when right is inactive or coincides with left (npex=1).
        IF ( PRESENT( id_right ) )  THEN
-          CALL MPI_GATHERV( f_n_l(nzb_x_stg,nys), send_count, stg_type_yz_small, f_n(nzb+1,nys),   &
-                            recv_count_yz, displs_yz, stg_type_yz, id_right, comm1dx, ierr )
+          IF ( id_right >= 0  .AND.  id_right /= id_left )  THEN
+             CALL MPI_GATHERV( f_n_l(nzb_x_stg,nys), send_count, stg_type_yz_small, f_n(nzb+1,nys),&
+                               recv_count_yz, displs_yz, stg_type_yz, id_right, comm1dx, ierr )
+          ENDIF
        ENDIF
 #else
        f_n(nzb+1:nzt+1,nys:nyn) = f_n_l(nzb_x_stg:nzt_x_stg+1,nys:nyn)
@@ -2121,8 +2268,11 @@
                          recv_count_xz, displs_xz, stg_type_xz, id_south, comm1dy, ierr )
 !
 !--    Gather the processed velocity seed on north boundary mpi ranks.
-       CALL MPI_GATHERV( f_n_l(nzb_y_stg,nxl), send_count, stg_type_xz_small, f_n(nzb+1,nxl),      &
-                         recv_count_xz, displs_xz, stg_type_xz, id_north, comm1dy, ierr )
+!--    Skip when north is inactive or coincides with south (npey=1).
+       IF ( id_north >= 0  .AND.  id_north /= id_south )  THEN
+          CALL MPI_GATHERV( f_n_l(nzb_y_stg,nxl), send_count, stg_type_xz_small, f_n(nzb+1,nxl),   &
+                            recv_count_xz, displs_xz, stg_type_xz, id_north, comm1dy, ierr )
+       ENDIF
 #else
        f_n(nzb+1:nzt+1,nxl:nxr) = f_n_l(nzb_y_stg:nzt_y_stg+1,nxl:nxr)
 !

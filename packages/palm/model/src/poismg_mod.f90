@@ -993,16 +993,17 @@
                   nys_mg(l) = save_nys_mg + 1
                 ENDIF
              ENDIF
-             !$ACC UPDATE DEVICE (nxl_mg,nys_mg) IF(enable_openacc)
 !
 !--          Without unrolling of loops, no cache optimization.
+!--          Loop bounds are evaluated on the host; skip UPDATE DEVICE of nxl_mg/nys_mg
+!--          (was a major GPU sync bottleneck in redblack_no_unroll_f).
 !             WRITE(9,*) '*** loop 1:'
 !             WRITE(9,'(A,I3,A,I3,A)') 'i = ', nxl_mg(l), ', ', nxr_mg(l), ', 2'
 !             WRITE(9,'(A,I3,A,I3,A)') 'j = ', nys_mg(l) + 2 - color, ', ', nyn_mg(l), ', 2'
 !             WRITE(9,'(A,I3,A,I3,A)') 'k = ', ind_even_odd+1, ', ', nzt_mg(l), ', 1'
              !$OMP PARALLEL PRIVATE (i,j,k,km1,kp1)
              !$OMP DO
-             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(2) &
+             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) &
              !$ACC DEFAULT(PRESENT) IF(enable_openacc)
              DO  i = nxl_mg(l), nxr_mg(l), 2
                 DO  j = nys_mg(l) + 2 - color, nyn_mg(l), 2
@@ -1040,14 +1041,13 @@
                   nys_mg(l) = save_nys_mg - 1
                 ENDIF
              ENDIF
-             !$ACC UPDATE DEVICE (nxl_mg,nys_mg) IF(enable_openacc)
 
 !             WRITE(9,*) '*** loop 2:'
 !             WRITE(9,'(A,I3,A,I3,A)') 'i = ', nxl_mg(l)+1, ', ', nxr_mg(l), ', 2'
 !             WRITE(9,'(A,I3,A,I3,A)') 'j = ', nys_mg(l) + (color-1), ', ', nyn_mg(l), ', 2'
 !             WRITE(9,'(A,I3,A,I3,A)') 'k = ', ind_even_odd+1, ', ', nzt_mg(l), ', 1'
              !$OMP DO
-             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(2) &
+             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) &
              !$ACC DEFAULT(PRESENT) IF(enable_openacc)
              DO  i = nxl_mg(l)+1, nxr_mg(l), 2
                 DO  j = nys_mg(l) + (color-1), nyn_mg(l), 2
@@ -1085,14 +1085,13 @@
                   nys_mg(l) = save_nys_mg - 1
                 ENDIF
              ENDIF
-             !$ACC UPDATE DEVICE (nxl_mg,nys_mg) IF(enable_openacc)
 
 !             WRITE(9,*) '*** loop 3:'
 !             WRITE(9,'(A,I3,A,I3,A)') 'i = ', nxl_mg(l), ', ', nxr_mg(l), ', 2'
 !             WRITE(9,'(A,I3,A,I3,A)') 'j = ', nys_mg(l) + (color-1), ', ', nyn_mg(l), ', 2'
 !             WRITE(9,'(A,I3,A,I3,A)') 'k = ', nzb+1, ', ', ind_even_odd, ', 1'
              !$OMP DO
-             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(2) &
+             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) &
              !$ACC DEFAULT(PRESENT) IF(enable_openacc)
              DO  i = nxl_mg(l), nxr_mg(l), 2
                 DO  j = nys_mg(l) + (color-1), nyn_mg(l), 2
@@ -1130,14 +1129,13 @@
                   nys_mg(l) = save_nys_mg + 1
                 ENDIF
              ENDIF
-             !$ACC UPDATE DEVICE (nxl_mg,nys_mg) IF(enable_openacc)
 
 !             WRITE(9,*) '*** loop 4:'
 !             WRITE(9,'(A,I3,A,I3,A)') 'i = ', nxl_mg(l)+1, ', ', nxr_mg(l), ', 2'
 !             WRITE(9,'(A,I3,A,I3,A)') 'j = ', nys_mg(l) + 2 - color, ', ', nyn_mg(l), ', 2'
 !             WRITE(9,'(A,I3,A,I3,A)') 'k = ', nzb+1, ', ', ind_even_odd, ', 1'
              !$OMP DO
-             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(2) &
+             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) &
              !$ACC DEFAULT(PRESENT) IF(enable_openacc)
              DO  i = nxl_mg(l)+1, nxr_mg(l), 2
                 DO  j = nys_mg(l) + 2 - color, nyn_mg(l), 2

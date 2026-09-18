@@ -749,35 +749,35 @@
        IF ( bc_dirichlet_l )  THEN
           id_stg_left_l = myidx
        ELSE
-          id_stg_left_l = 0
+          id_stg_left_l = -1
        ENDIF
        IF ( bc_dirichlet_r )  THEN
           id_stg_right_l = myidx
        ELSE
-          id_stg_right_l = 0
+          id_stg_right_l = -1
        ENDIF
        IF ( bc_dirichlet_s )  THEN
           id_stg_south_l = myidy
        ELSE
-          id_stg_south_l = 0
+          id_stg_south_l = -1
        ENDIF
        IF ( bc_dirichlet_n )  THEN
           id_stg_north_l = myidy
        ELSE
-          id_stg_north_l = 0
+          id_stg_north_l = -1
        ENDIF
 
        IF ( collective_wait )  CALL MPI_BARRIER( comm2d, ierr )
-       CALL MPI_ALLREDUCE( id_stg_left_l, id_stg_left,   1, MPI_INTEGER, MPI_SUM, comm1dx, ierr )
+       CALL MPI_ALLREDUCE( id_stg_left_l, id_stg_left,   1, MPI_INTEGER, MPI_MAX, comm1dx, ierr )
 
        IF ( collective_wait )  CALL MPI_BARRIER( comm2d, ierr )
-       CALL MPI_ALLREDUCE( id_stg_right_l, id_stg_right, 1, MPI_INTEGER, MPI_SUM, comm1dx, ierr )
+       CALL MPI_ALLREDUCE( id_stg_right_l, id_stg_right, 1, MPI_INTEGER, MPI_MAX, comm1dx, ierr )
 
        IF ( collective_wait )  CALL MPI_BARRIER( comm2d, ierr )
-       CALL MPI_ALLREDUCE( id_stg_south_l, id_stg_south, 1, MPI_INTEGER, MPI_SUM, comm1dy, ierr )
+       CALL MPI_ALLREDUCE( id_stg_south_l, id_stg_south, 1, MPI_INTEGER, MPI_MAX, comm1dy, ierr )
 
        IF ( collective_wait )  CALL MPI_BARRIER( comm2d, ierr )
-       CALL MPI_ALLREDUCE( id_stg_north_l, id_stg_north, 1, MPI_INTEGER, MPI_SUM, comm1dy, ierr )
+       CALL MPI_ALLREDUCE( id_stg_north_l, id_stg_north, 1, MPI_INTEGER, MPI_MAX, comm1dy, ierr )
 
     ENDIF
 

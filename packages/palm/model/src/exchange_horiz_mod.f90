@@ -108,8 +108,7 @@
 
 #if defined( _OPENACC )
     USE control_parameters,                                                                        &
-        ONLY:  enable_openacc,                                                                     &
-               message_string
+        ONLY:  enable_openacc
 
     USE openacc,                                                                                   &
         ONLY:  acc_is_present
@@ -135,6 +134,7 @@
     LOGICAL, OPTIONAL, INTENT(IN) ::  mg_switch_to_pe0
 
     LOGICAL ::  switch_to_pe0  !< local switch telling if total domain is gathered on one PE
+    LOGICAL ::  lacc          !< OpenACC path only if ar is present on device
 
 
     REAL(wp), DIMENSION(nzb:nzt+1,nys-nbgp_local:nyn+nbgp_local,                                   &
@@ -152,11 +152,11 @@
 
 #if defined( _OPENACC )
 !
-!-- Security check for arrays from modules that are still not ported.
-    IF ( enable_openacc  .AND.  .NOT. acc_is_present( ar ) )  THEN
-       message_string = 'array not on device'
-       CALL message( 'exchange_horiz', 'PAC0358', 1, 2, 0, 6, 0 )
-    ENDIF
+!-- Use device path only if array is already on the GPU; otherwise host
+!-- exchange (needed for unported modules, e.g. radiation, and early init).
+    lacc = enable_openacc  .AND.  acc_is_present( ar )
+#else
+    lacc = .FALSE.
 #endif
 
 !
@@ -206,7 +206,7 @@
 !--    One-dimensional decomposition along x, boundary values can be exchanged within the PE memory
        IF ( PRESENT( alternative_communicator ) )  THEN
           IF ( alternative_communicator == 1  .OR.  alternative_communicator == 3 )  THEN
-             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(enable_openacc)
+             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
              DO  k = nzb, nzt+1
                 DO  j = 1, nbgp_local
                    DO  i = nxl-nbgp_local, nxr+nbgp_local
@@ -215,7 +215,7 @@
                 ENDDO
              ENDDO
              !$ACC END PARALLEL LOOP
-             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(enable_openacc)
+             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
              DO  k = nzb, nzt+1
                 DO  j = 1, nbgp_local
                    DO  i = nxl-nbgp_local, nxr+nbgp_local
@@ -227,7 +227,7 @@
           ENDIF
        ELSE
           IF ( bc_ns_cyc )  THEN
-             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(enable_openacc)
+             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
              DO  k = nzb, nzt+1
                 DO  j = 1, nbgp_local
                    DO  i = nxl-nbgp_local, nxr+nbgp_local
@@ -236,7 +236,7 @@
                 ENDDO
              ENDDO
              !$ACC END PARALLEL LOOP
-             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(enable_openacc)
+             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
              DO  k = nzb, nzt+1
                 DO  j = 1, nbgp_local
                    DO  i = nxl-nbgp_local, nxr+nbgp_local
@@ -253,14 +253,14 @@
        IF ( synchronous_exchange )  THEN
 !
 !--       Send front boundary, receive rear one (synchronous)
-          !$ACC HOST_DATA USE_DEVICE(ar) IF(enable_openacc)
+          !$ACC HOST_DATA USE_DEVICE(ar) IF(lacc)
           CALL MPI_SENDRECV( ar(nzb,nys,nxl-nbgp_local),   1, type_xz(l), south_pe, 0,             &
                              ar(nzb,nyn+1,nxl-nbgp_local), 1, type_xz(l), north_pe, 0,             &
                              communicator, status, ierr )
           !$ACC END HOST_DATA
 !
 !--       Send rear boundary, receive front one (synchronous)
-          !$ACC HOST_DATA USE_DEVICE(ar) IF(enable_openacc)
+          !$ACC HOST_DATA USE_DEVICE(ar) IF(lacc)
           CALL MPI_SENDRECV( ar(nzb,nyn-nbgp_local+1,nxl-nbgp_local), 1, type_xz(l), north_pe, 1,  &
                              ar(nzb,nys-nbgp_local,nxl-nbgp_local),   1, type_xz(l), south_pe, 1,  &
                              communicator, status, ierr )
@@ -281,13 +281,13 @@
              ALLOCATE( recvbuf2(nzb:nzt+1,nxl:nxr,nbgp_local) )
              ALLOCATE( sendbuf1(nzb:nzt+1,nxl:nxr,nbgp_local) )
              ALLOCATE( sendbuf2(nzb:nzt+1,nxl:nxr,nbgp_local) )
-             !$ACC DATA CREATE(recvbuf1,recvbuf2,sendbuf1,sendbuf2) IF(enable_openacc)
+             !$ACC DATA CREATE(recvbuf1,recvbuf2,sendbuf1,sendbuf2) IF(lacc)
 
              bufsize = ( nzt - nzb + 2 ) * ( nxr - nxl + 1 ) * nbgp_local
 
 !
 !--          Pack data for sending south boundary.
-             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(enable_openacc)
+             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
              DO  i = nxl, nxr
                 DO  j = 1, nbgp_local
                    DO  k = nzb, nzt+1
@@ -298,7 +298,7 @@
              !$ACC END PARALLEL LOOP
 !
 !--          Pack data for sending north boundary.
-             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(enable_openacc)
+             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
              DO  i = nxl, nxr
                 DO  j = 1, nbgp_local
                    DO  k = nzb, nzt+1
@@ -309,23 +309,23 @@
              !$ACC END PARALLEL LOOP
 !
 !--          Send south boundary, receive north one (asynchronous)
-             !$ACC HOST_DATA USE_DEVICE(sendbuf1) IF(enable_openacc)
+             !$ACC HOST_DATA USE_DEVICE(sendbuf1) IF(lacc)
              CALL MPI_ISEND( sendbuf1(nzb,nxl,1), bufsize, MPI_REAL, south_pe, req_count,          &
                              communicator, req(req_count+1), ierr )
              !$ACC END HOST_DATA
 
-             !$ACC HOST_DATA USE_DEVICE(recvbuf1) IF(enable_openacc)
+             !$ACC HOST_DATA USE_DEVICE(recvbuf1) IF(lacc)
              CALL MPI_IRECV( recvbuf1(nzb,nxl,1), bufsize, MPI_REAL, north_pe, req_count,          &
                              communicator, req(req_count+2), ierr )
              !$ACC END HOST_DATA
 !
 !--          Send north boundary, receive south one (asynchronous)
-             !$ACC HOST_DATA USE_DEVICE(sendbuf2) IF(enable_openacc)
+             !$ACC HOST_DATA USE_DEVICE(sendbuf2) IF(lacc)
              CALL MPI_ISEND( sendbuf2(nzb,nxl,1), bufsize, MPI_REAL, north_pe, req_count+1,        &
                              communicator, req(req_count+3), ierr )
              !$ACC END HOST_DATA
 
-             !$ACC HOST_DATA USE_DEVICE(recvbuf2) IF(enable_openacc)
+             !$ACC HOST_DATA USE_DEVICE(recvbuf2) IF(lacc)
              CALL MPI_IRECV( recvbuf2(nzb,nxl,1), bufsize, MPI_REAL, south_pe, req_count+1,        &
                              communicator, req(req_count+4), ierr )
              !$ACC END HOST_DATA
@@ -333,7 +333,7 @@
              CALL MPI_WAITALL( 4, req, wait_stat, ierr )
 !
 !--          Unpack received north boundary data
-             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(enable_openacc)
+             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
              DO  i = nxl, nxr
                 DO  j = 1, nbgp_local
                    DO  k = nzb, nzt+1
@@ -344,7 +344,7 @@
              !$ACC END PARALLEL LOOP
 !
 !--          Unpack received south boundary data
-             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(enable_openacc)
+             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
              DO  i = nxl, nxr
                 DO  j = 1, nbgp_local
                    DO  k = nzb, nzt+1
@@ -360,21 +360,21 @@
           ELSE
 !
 !--          Send front boundary, receive rear one (asynchronous)
-             !$ACC HOST_DATA USE_DEVICE(ar) IF(enable_openacc)
+             !$ACC HOST_DATA USE_DEVICE(ar) IF(lacc)
              CALL MPI_ISEND( ar(nzb,nys,nxl-nbgp_local),   1, type_xz(l), south_pe,                &
                              req_count, communicator, req(req_count+1), ierr )
              !$ACC END HOST_DATA
-             !$ACC HOST_DATA USE_DEVICE(ar) IF(enable_openacc)
+             !$ACC HOST_DATA USE_DEVICE(ar) IF(lacc)
              CALL MPI_IRECV( ar(nzb,nyn+1,nxl-nbgp_local), 1, type_xz(l), north_pe,                &
                              req_count, communicator, req(req_count+2), ierr )
              !$ACC END HOST_DATA
 !
 !--          Send rear boundary, receive front one (asynchronous)
-             !$ACC HOST_DATA USE_DEVICE(ar) IF(enable_openacc)
+             !$ACC HOST_DATA USE_DEVICE(ar) IF(lacc)
              CALL MPI_ISEND( ar(nzb,nyn-nbgp_local+1,nxl-nbgp_local), 1, type_xz(l), north_pe,     &
                              req_count+1, communicator, req(req_count+3), ierr )
              !$ACC END HOST_DATA
-             !$ACC HOST_DATA USE_DEVICE(ar) IF(enable_openacc)
+             !$ACC HOST_DATA USE_DEVICE(ar) IF(lacc)
              CALL MPI_IRECV( ar(nzb,nys-nbgp_local,nxl-nbgp_local),   1, type_xz(l), south_pe,     &
                              req_count+1, communicator, req(req_count+4), ierr )
              !$ACC END HOST_DATA
@@ -395,7 +395,7 @@
 !--    One-dimensional decomposition along y, boundary values can be exchanged within the PE memory.
        IF ( PRESENT( alternative_communicator ) )  THEN
           IF ( alternative_communicator <= 2 )  THEN
-             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(enable_openacc)
+             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
              DO  i = 1, nbgp_local
                 DO  j = nys-nbgp_local, nyn+nbgp_local
                    DO  k = nzb, nzt+1
@@ -404,7 +404,7 @@
                 ENDDO
              ENDDO
              !$ACC END PARALLEL LOOP
-             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(enable_openacc)
+             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
              DO  i = 1, nbgp_local
                 DO  j = nys-nbgp_local, nyn+nbgp_local
                    DO  k = nzb, nzt+1
@@ -416,7 +416,7 @@
           ENDIF
        ELSE
           IF ( bc_lr_cyc )  THEN
-             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(enable_openacc)
+             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
              DO  i = 1, nbgp_local
                 DO  j = nys-nbgp_local, nyn+nbgp_local
                    DO  k = nzb, nzt+1
@@ -425,7 +425,7 @@
                 ENDDO
              ENDDO
              !$ACC END PARALLEL LOOP
-             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(enable_openacc)
+             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
              DO  i = 1, nbgp_local
                 DO  j = nys-nbgp_local, nyn+nbgp_local
                    DO  k = nzb, nzt+1
@@ -442,14 +442,14 @@
        IF ( synchronous_exchange )  THEN
 !
 !--       Send left boundary, receive right one (synchronous)
-          !$ACC HOST_DATA USE_DEVICE(ar) IF(enable_openacc)
+          !$ACC HOST_DATA USE_DEVICE(ar) IF(lacc)
           CALL MPI_SENDRECV( ar(nzb,nys-nbgp_local,nxl),   1, type_yz(l), left_pe,  0,             &
                              ar(nzb,nys-nbgp_local,nxr+1), 1, type_yz(l), right_pe, 0,             &
                              communicator, status, ierr )
           !$ACC END HOST_DATA
 !
 !--       Send right boundary, receive left one (synchronous)
-          !$ACC HOST_DATA USE_DEVICE(ar) IF(enable_openacc)
+          !$ACC HOST_DATA USE_DEVICE(ar) IF(lacc)
           CALL MPI_SENDRECV( ar(nzb,nys-nbgp_local,nxr+1-nbgp_local), 1, type_yz(l), right_pe, 1,  &
                              ar(nzb,nys-nbgp_local,nxl-nbgp_local),   1, type_yz(l), left_pe,  1,  &
                              communicator, status, ierr )
@@ -464,21 +464,21 @@
 
 !
 !--       Send left boundary, receive right one (asynchronous)
-          !$ACC HOST_DATA USE_DEVICE(ar) IF(enable_openacc)
+          !$ACC HOST_DATA USE_DEVICE(ar) IF(lacc)
           CALL MPI_ISEND( ar(nzb,nys-nbgp_local,nxl),   1, type_yz(l), left_pe,                    &
                           req_count, communicator, req(req_count+1), ierr )
           !$ACC END HOST_DATA
-          !$ACC HOST_DATA USE_DEVICE(ar) IF(enable_openacc)
+          !$ACC HOST_DATA USE_DEVICE(ar) IF(lacc)
           CALL MPI_IRECV( ar(nzb,nys-nbgp_local,nxr+1), 1, type_yz(l), right_pe,                   &
                           req_count, communicator, req(req_count+2), ierr )
           !$ACC END HOST_DATA
 !
 !--       Send right boundary, receive left one (asynchronous)
-          !$ACC HOST_DATA USE_DEVICE(ar) IF(enable_openacc)
+          !$ACC HOST_DATA USE_DEVICE(ar) IF(lacc)
           CALL MPI_ISEND( ar(nzb,nys-nbgp_local,nxr+1-nbgp_local), 1, type_yz(l), right_pe,        &
                           req_count+1, communicator, req(req_count+3), ierr )
           !$ACC END HOST_DATA
-          !$ACC HOST_DATA USE_DEVICE(ar) IF(enable_openacc)
+          !$ACC HOST_DATA USE_DEVICE(ar) IF(lacc)
           CALL MPI_IRECV( ar(nzb,nys-nbgp_local,nxl-nbgp_local),   1, type_yz(l), left_pe,         &
                           req_count+1, communicator, req(req_count+4), ierr )
           !$ACC END HOST_DATA
@@ -499,7 +499,7 @@
 !-- are used.
     IF ( PRESENT( alternative_communicator ) )  THEN
        IF ( alternative_communicator <= 2 )  THEN
-          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc) IF(enable_openacc)
+          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
           DO  i = 1, nbgp_local
              DO  j = nys-nbgp_local, nyn+nbgp_local
                 DO  k = nzb, nzt+1
@@ -508,7 +508,7 @@
              ENDDO
           ENDDO
           !$ACC END PARALLEL LOOP
-          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc) IF(enable_openacc)
+          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
           DO  i = 1, nbgp_local
              DO  j = nys-nbgp_local, nyn+nbgp_local
                 DO  k = nzb, nzt+1
@@ -520,7 +520,7 @@
        ENDIF
     ELSE
        IF ( bc_lr_cyc )  THEN
-          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc) IF(enable_openacc)
+          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
           DO  i = 1, nbgp_local
              DO  j = nys-nbgp_local, nyn+nbgp_local
                 DO  k = nzb, nzt+1
@@ -529,7 +529,7 @@
              ENDDO
           ENDDO
           !$ACC END PARALLEL LOOP
-          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc) IF(enable_openacc)
+          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
           DO  i = 1, nbgp_local
              DO  j = nys-nbgp_local, nyn+nbgp_local
                 DO  k = nzb, nzt+1
@@ -543,7 +543,7 @@
 
     IF ( PRESENT( alternative_communicator ) )  THEN
        IF ( alternative_communicator == 1  .OR.  alternative_communicator == 3 )  THEN
-          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc) IF(enable_openacc)
+          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
           DO  i = nxl-nbgp_local, nxr+nbgp_local
              DO  j = 1, nbgp_local
                 DO  k = nzb, nzt+1
@@ -552,7 +552,7 @@
              ENDDO
           ENDDO
           !$ACC END PARALLEL LOOP
-          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc) IF(enable_openacc)
+          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
           DO  i = nxl-nbgp_local, nxr+nbgp_local
              DO  j = 1, nbgp_local
                 DO  k = nzb, nzt+1
@@ -564,7 +564,7 @@
        ENDIF
     ELSE
        IF ( bc_ns_cyc )  THEN
-          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc) IF(enable_openacc)
+          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
           DO  i = nxl-nbgp_local, nxr+nbgp_local
              DO  j = 1, nbgp_local
                 DO  k = nzb, nzt+1
@@ -573,7 +573,7 @@
              ENDDO
           ENDDO
           !$ACC END PARALLEL LOOP
-          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc) IF(enable_openacc)
+          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
           DO  i = nxl-nbgp_local, nxr+nbgp_local
              DO  j = 1, nbgp_local
                 DO  k = nzb, nzt+1
@@ -641,8 +641,7 @@
 
 #if defined( _OPENACC )
     USE control_parameters,                                                                        &
-        ONLY:  enable_openacc,                                                                     &
-               message_string
+        ONLY:  enable_openacc
 
     USE openacc,                                                                                   &
         ONLY:  acc_is_present
@@ -698,6 +697,8 @@
     INTEGER(iwp) ::  right_pe      !< id of right pe that is used as argument in MPI calls
     INTEGER(iwp) ::  south_pe      !< id of south pe that is used as argument in MPI calls
 
+    LOGICAL ::  lacc  !< OpenACC path only if ar is present on device
+
     REAL(wp), DIMENSION(nzb:nzt+1,nys-nbgp_local:nyn+nbgp_local,                                   &
                         nxl-nbgp_local:nxr+nbgp_local) ::  ar !< 3d-array for which exchange is done
 
@@ -711,11 +712,11 @@
 
 #if defined( _OPENACC )
 !
-!-- Security check for arrays from modules that are still not ported.
-    IF ( enable_openacc  .AND.  .NOT. acc_is_present( ar ) )  THEN
-       message_string = 'array not on device'
-       CALL message( 'exchange_horiz_rb', 'PAC0358', 1, 2, 0, 6, 0 )
-    ENDIF
+!-- Use device path only if array is already on the GPU; otherwise host
+!-- exchange (needed for unported modules, e.g. radiation, and early init).
+    lacc = enable_openacc  .AND.  acc_is_present( ar )
+#else
+    lacc = .FALSE.
 #endif
 
 !
@@ -732,7 +733,7 @@
     IF ( npey == 1 )  THEN
 
        IF ( bc_ns_cyc )  THEN
-          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(enable_openacc)
+          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
           DO  k = nzb, nzt+1
              DO  j = 1, nbgp_local
                 DO  i = nxl-nbgp_local, nxr+nbgp_local
@@ -741,7 +742,7 @@
              ENDDO
           ENDDO
           !$ACC END PARALLEL LOOP
-          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(enable_openacc)
+          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
           DO  k = nzb, nzt+1
              DO  j = 1, nbgp_local
                 DO  i = nxl-nbgp_local, nxr+nbgp_local
@@ -769,7 +770,7 @@
        ALLOCATE( recvbuf2(nzb+1:nzt,0:nxr_rb) )
        ALLOCATE( sendbuf1(nzb+1:nzt,0:nxr_rb) )
        ALLOCATE( sendbuf2(nzb+1:nzt,0:nxr_rb) )
-       !$ACC DATA CREATE(recvbuf1,recvbuf2,sendbuf1,sendbuf2) IF(enable_openacc)
+       !$ACC DATA CREATE(recvbuf1,recvbuf2,sendbuf1,sendbuf2) IF(lacc)
 
        bufsize = ( nzt - nzb ) * ( nxr_rb + 1 )
 
@@ -779,7 +780,7 @@
        il = ileft_for_nys_send(1,color)
        kb = kbottom_for_nys_send(1,color)
        kt = ktop_for_nys_send(1,color)
-       !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(enable_openacc)
+       !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
        DO  i = il, nxr, 2
           ii = ii + 1
           DO  k = kb, kt, ki
@@ -792,7 +793,7 @@
        il = ileft_for_nyn_send(1,color)
        kb = kbottom_for_nyn_send(1,color)
        kt = ktop_for_nyn_send(1,color)
-       !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(enable_openacc)
+       !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
        DO  i = il, nxr, 2
           ii = ii + 1
           DO  k = kb, kt, ki
@@ -805,7 +806,7 @@
        il = ileft_for_nys_send(2,color)
        kb = kbottom_for_nys_send(2,color)
        kt = ktop_for_nys_send(2,color)
-       !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(enable_openacc)
+       !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
        DO  i = il, nxr, 2
           ii = ii + 1
           DO  k = kb, kt, ki
@@ -818,7 +819,7 @@
        il = ileft_for_nyn_send(2,color)
        kb = kbottom_for_nyn_send(2,color)
        kt = ktop_for_nyn_send(2,color)
-       !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(enable_openacc)
+       !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
        DO  i = il, nxr, 2
           ii = ii + 1
           DO  k = kb, kt, ki
@@ -829,23 +830,23 @@
 
 !
 !--    Send south boundary, receive north one (asynchronous), only red or black points.
-       !$ACC HOST_DATA USE_DEVICE(sendbuf1) IF(enable_openacc)
+       !$ACC HOST_DATA USE_DEVICE(sendbuf1) IF(lacc)
        CALL MPI_ISEND( sendbuf1(nzb+1,0), bufsize, MPI_REAL, south_pe, req_count, communicator,    &
                        req(req_count+1), ierr )
        !$ACC END HOST_DATA
 
-       !$ACC HOST_DATA USE_DEVICE(recvbuf1) IF(enable_openacc)
+       !$ACC HOST_DATA USE_DEVICE(recvbuf1) IF(lacc)
        CALL MPI_IRECV( recvbuf1(nzb+1,0), bufsize, MPI_REAL, north_pe, req_count, communicator,    &
                        req(req_count+2), ierr )
        !$ACC END HOST_DATA
 !
 !--    Send north boundary, receive south one (asynchronous)
-       !$ACC HOST_DATA USE_DEVICE(sendbuf2) IF(enable_openacc)
+       !$ACC HOST_DATA USE_DEVICE(sendbuf2) IF(lacc)
        CALL MPI_ISEND( sendbuf2(nzb+1,0), bufsize, MPI_REAL, north_pe, req_count+1, communicator,  &
                        req(req_count+3), ierr )
        !$ACC END HOST_DATA
 
-       !$ACC HOST_DATA USE_DEVICE(recvbuf2) IF(enable_openacc)
+       !$ACC HOST_DATA USE_DEVICE(recvbuf2) IF(lacc)
        CALL MPI_IRECV( recvbuf2(nzb+1,0), bufsize, MPI_REAL, south_pe, req_count+1, communicator,  &
                        req(req_count+4), ierr )
        !$ACC END HOST_DATA
@@ -860,7 +861,7 @@
           il = ileft_for_nyn_recv(1,color)
           kb = kbottom_for_nyn_recv(1,color)
           kt = ktop_for_nyn_recv(1,color)
-          !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(enable_openacc)
+          !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
           DO  i = il, nxr, 2
              ii = ii + 1
              DO  k = kb, kt, ki
@@ -873,7 +874,7 @@
           il = ileft_for_nyn_recv(2,color)
           kb = kbottom_for_nyn_recv(2,color)
           kt = ktop_for_nyn_recv(2,color)
-          !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(enable_openacc)
+          !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
           DO  i = il, nxr, 2
              ii = ii + 1
              DO  k = kb, kt, ki
@@ -890,7 +891,7 @@
           il = ileft_for_nys_recv(1,color)
           kb = kbottom_for_nys_recv(1,color)
           kt = ktop_for_nys_recv(1,color)
-          !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(enable_openacc)
+          !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
           DO  i = il, nxr, 2
              ii = ii + 1
              DO  k = kb, kt, ki
@@ -903,7 +904,7 @@
           il = ileft_for_nys_recv(2,color)
           kb = kbottom_for_nys_recv(2,color)
           kt = ktop_for_nys_recv(2,color)
-          !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(enable_openacc)
+          !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
           DO  i = il, nxr, 2
              ii = ii + 1
              DO  k = kb, kt, ki
@@ -925,7 +926,7 @@
     IF ( npex == 1 )  THEN
 
        IF ( bc_lr_cyc )  THEN
-          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(enable_openacc)
+          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
           DO  i = 1, nbgp_local
              DO  j = nys-nbgp_local, nyn+nbgp_local
                 DO  k = nzb, nzt+1
@@ -934,7 +935,7 @@
              ENDDO
           ENDDO
           !$ACC END PARALLEL LOOP
-          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(enable_openacc)
+          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
           DO  i = 1, nbgp_local
              DO  j = nys-nbgp_local, nyn+nbgp_local
                 DO  k = nzb, nzt+1
@@ -961,7 +962,7 @@
        ALLOCATE( recvbuf2(nzb+1:nzt,-1:nyn_rb+1) )
        ALLOCATE( sendbuf1(nzb+1:nzt,-1:nyn_rb+1) )
        ALLOCATE( sendbuf2(nzb+1:nzt,-1:nyn_rb+1) )
-       !$ACC DATA CREATE(recvbuf1,recvbuf2,sendbuf1,sendbuf2) IF(enable_openacc)
+       !$ACC DATA CREATE(recvbuf1,recvbuf2,sendbuf1,sendbuf2) IF(lacc)
 
        bufsize = ( nzt - nzb ) * ( nyn_rb + 3 )
 
@@ -971,7 +972,7 @@
        js = jsouth_for_nxl_send(1,color)
        kb = kbottom_for_nxl_send(1,color)
        kt = ktop_for_nxl_send(1,color)
-       !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(enable_openacc)
+       !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
        DO  j = js, nyn+1, 2
           jj = jj + 1
           DO  k = kb, kt, ki
@@ -984,7 +985,7 @@
        js = jsouth_for_nxr_send(1,color)
        kb = kbottom_for_nxr_send(1,color)
        kt = ktop_for_nxr_send(1,color)
-       !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(enable_openacc)
+       !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
        DO  j = js, nyn+1, 2
           jj = jj + 1
           DO  k = kb, kt, ki
@@ -997,7 +998,7 @@
        js = jsouth_for_nxl_send(2,color)
        kb = kbottom_for_nxl_send(2,color)
        kt = ktop_for_nxl_send(2,color)
-       !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(enable_openacc)
+       !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
        DO  j = js, nyn+1, 2
           jj = jj + 1
           DO  k = kb, kt, ki
@@ -1010,7 +1011,7 @@
        js = jsouth_for_nxr_send(2,color)
        kb = kbottom_for_nxr_send(2,color)
        kt = ktop_for_nxr_send(2,color)
-       !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(enable_openacc)
+       !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
        DO  j = js, nyn+1, 2
           jj = jj + 1
           DO  k = kb, kt, ki
@@ -1021,23 +1022,23 @@
 
 !
 !--    Send left boundary, receive right one (asynchronous), only red or black points
-       !$ACC HOST_DATA USE_DEVICE(sendbuf1) IF(enable_openacc)
+       !$ACC HOST_DATA USE_DEVICE(sendbuf1) IF(lacc)
        CALL MPI_ISEND( sendbuf1(nzb+1,-1), bufsize, MPI_REAL, left_pe, req_count, communicator,    &
                        req(req_count+1), ierr )
        !$ACC END HOST_DATA
 
-       !$ACC HOST_DATA USE_DEVICE(recvbuf1) IF(enable_openacc)
+       !$ACC HOST_DATA USE_DEVICE(recvbuf1) IF(lacc)
        CALL MPI_IRECV( recvbuf1(nzb+1,-1), bufsize, MPI_REAL, right_pe, req_count, communicator,   &
                        req(req_count+2), ierr )
        !$ACC END HOST_DATA
 !
 !--    Send right boundary, receive left one (asynchronous)
-       !$ACC HOST_DATA USE_DEVICE(sendbuf2) IF(enable_openacc)
+       !$ACC HOST_DATA USE_DEVICE(sendbuf2) IF(lacc)
        CALL MPI_ISEND( sendbuf2(nzb+1,-1), bufsize, MPI_REAL, right_pe, req_count+1, communicator, &
                        req(req_count+3), ierr )
        !$ACC END HOST_DATA
 
-       !$ACC HOST_DATA USE_DEVICE(recvbuf2) IF(enable_openacc)
+       !$ACC HOST_DATA USE_DEVICE(recvbuf2) IF(lacc)
        CALL MPI_IRECV( recvbuf2(nzb+1,-1), bufsize, MPI_REAL, left_pe, req_count+1, communicator,  &
                        req(req_count+4), ierr )
        !$ACC END HOST_DATA
@@ -1052,7 +1053,7 @@
           js = jsouth_for_nxr_recv(1,color)
           kb = kbottom_for_nxr_recv(1,color)
          kt = ktop_for_nxr_recv(1,color)
-          !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(enable_openacc)
+          !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
           DO  j = js, nyn+1, 2
              jj = jj + 1
              DO  k = kb, kt, ki
@@ -1065,7 +1066,7 @@
           js = jsouth_for_nxr_recv(2,color)
           kb = kbottom_for_nxr_recv(2,color)
           kt = ktop_for_nxr_recv(2,color)
-         !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(enable_openacc)
+         !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
           DO  j = js, nyn+1, 2
              jj = jj + 1
              DO  k = kb, kt, ki
@@ -1082,7 +1083,7 @@
           js = jsouth_for_nxl_recv(1,color)
           kb = kbottom_for_nxl_recv(1,color)
           kt = ktop_for_nxl_recv(1,color)
-          !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(enable_openacc)
+          !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
           DO  j = js, nyn+1, 2
              jj = jj + 1
              DO  k = kb, kt, ki
@@ -1095,7 +1096,7 @@
           js = jsouth_for_nxl_recv(2,color)
           kb = kbottom_for_nxl_recv(2,color)
           kt = ktop_for_nxl_recv(2,color)
-          !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(enable_openacc)
+          !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
           DO  j = js, nyn+1, 2
              jj = jj + 1
              DO  k = kb, kt, ki
@@ -1426,10 +1427,6 @@
         ONLY:  bc_lr_cyc,                                                                          &
                bc_ns_cyc
 #endif
-#if defined( _OPENACC )
-    USE control_parameters,                                                                        &
-        ONLY:  message_string
-#endif
 
     USE cpulog,                                                                                    &
         ONLY:  cpu_log,                                                                            &
@@ -1445,10 +1442,13 @@
                             nxl_l-nbgp_local:nxr_l+nbgp_local) ::  ar  !< treated array
 
 
-#if defined( _OPENACC )
-    message_string = 'routine not prepared for using openacc'
-    CALL message( 'exchange_horiz_2d_byte', 'PAC0359', 1, 2, 0, 6, 0 )
-#endif
+!
+!-- Host-side halo exchange (building_id / surface types). Same as exchange_horiz_2d:
+!-- do not abort under OpenACC compile; arrays stay on host during topography init.
+!#if defined( _OPENACC )
+!    message_string = 'routine not prepared for using openacc'
+!    CALL message( 'exchange_horiz_2d_byte', 'PAC0359', 1, 2, 0, 6, 0 )
+!#endif
 
     CALL cpu_log( log_point_s(13), 'exchange_horiz_2d', 'start' )
 
@@ -1541,10 +1541,6 @@
         ONLY:  bc_lr_cyc,                                                                          &
                bc_ns_cyc
 #endif
-#if defined( _OPENACC )
-    USE control_parameters,                                                                        &
-        ONLY:  message_string
-#endif
 
     USE cpulog,                                                                                    &
         ONLY:  cpu_log,                                                                            &
@@ -1560,10 +1556,13 @@
                             nxl_l-nbgp_local:nxr_l+nbgp_local) ::  ar  !< treated array
 
 
-#if defined( _OPENACC )
-    message_string = 'routine not prepared for using openacc'
-    CALL message( 'exchange_horiz_2d_int', 'PAC0359', 1, 2, 0, 6, 0 )
-#endif
+!
+!-- Host-side halo exchange (building_id / surface types). Same as exchange_horiz_2d:
+!-- do not abort under OpenACC compile; arrays stay on host during topography init.
+!#if defined( _OPENACC )
+!    message_string = 'routine not prepared for using openacc'
+!    CALL message( 'exchange_horiz_2d_int', 'PAC0359', 1, 2, 0, 6, 0 )
+!#endif
 
     CALL cpu_log( log_point_s(13), 'exchange_horiz_2d', 'start' )
 

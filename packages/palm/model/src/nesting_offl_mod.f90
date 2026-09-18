@@ -77,6 +77,7 @@
                dt_3d,                                                                              &
                dz,                                                                                 &
                end_time,                                                                           &
+               enable_openacc,                                                                     &
                humidity,                                                                           &
                initializing_actions,                                                               &
                message_string,                                                                     &
@@ -94,6 +95,11 @@
                time_since_reference_point,                                                         &
                volume_flow
 
+#if defined( _OPENACC )
+    USE openacc,                                                                                   &
+        ONLY:  acc_is_present
+#endif
+
     USE cpulog,                                                                                    &
         ONLY:  cpu_log,                                                                            &
                log_point,                                                                          &
@@ -108,12 +114,16 @@
         ONLY:  nbgp,                                                                               &
                nx,                                                                                 &
                nxl,                                                                                &
+               nxlg,                                                                               &
                nxlu,                                                                               &
                nxr,                                                                                &
+               nxrg,                                                                               &
                ny,                                                                                 &
                nys,                                                                                &
+               nysg,                                                                               &
                nysv,                                                                               &
                nyn,                                                                                &
+               nyng,                                                                               &
                nzb,                                                                                &
                nzt,                                                                                &
                topo_top_ind,                                                                       &
@@ -269,6 +279,7 @@
     INTEGER(iwp) ::  j_start_v     !< start index for array allocation along y-direction at eastern/western boundary (v)
     INTEGER(iwp) ::  lod           !< level-of-detail of lateral input data
 
+    INTEGER(iwp) ::  n_t_read = 2      !< NetCDF time-record count for boundary reads
     REAL(wp) ::  fac_dt              !< interpolation factor
 
     TYPE(nest_offl_type) ::  nest_offl  !< data structure for data input at lateral and top boundaries (provided by dynamic file)
@@ -416,6 +427,20 @@
     ENDIF
     nest_offl%tind_p = nest_offl%tind + 1
 !
+!-- Single-time dynamic drivers (nt=1): hold the only available time level for both
+!-- interpolation slots and request only one NetCDF time record (avoids NCF0537).
+    IF ( nest_offl%nt == 1 )  THEN
+       nest_offl%tind   = 0
+       nest_offl%tind_p = 0
+       n_t_read = 1
+    ELSE
+       IF ( nest_offl%tind_p > nest_offl%nt - 1 )  THEN
+          nest_offl%tind_p = nest_offl%nt - 1
+          nest_offl%tind   = MAX( 0, nest_offl%tind_p - 1 )
+       ENDIF
+       n_t_read = 2
+    ENDIF
+!
 !-- Open file in read-only mode
 #if defined ( __netcdf )
     CALL open_read_file( TRIM( input_file_dynamic ) // TRIM( coupling_char ), pids_id )
@@ -438,7 +463,7 @@
                           MERGE( nest_offl%tind+1, 1, bc_dirichlet_l),                             & ! start index time dimension
                           MERGE( nyn-nys+1, 0, bc_dirichlet_l),                                    & ! number of elements along y
                           MERGE( nest_offl%nzu, 0, bc_dirichlet_l),                                & ! number of elements alogn z
-                          MERGE( 2, 0, bc_dirichlet_l),                                            & ! number of time steps (2 or 0)
+                          MERGE( n_t_read, 0, bc_dirichlet_l),                                            & ! number of time steps (2 or 0)
                           .TRUE. )                                                                   ! parallel IO when compiled accordingly
 
        CALL get_variable( pids_id, 'ls_forcing_left_v',                                            &
@@ -448,7 +473,7 @@
                           MERGE( nest_offl%tind+1, 1, bc_dirichlet_l),                             &
                           MERGE( nyn-nysv+1, 0, bc_dirichlet_l),                                   &
                           MERGE( nest_offl%nzu, 0, bc_dirichlet_l),                                &
-                          MERGE( 2, 0, bc_dirichlet_l),                                            &
+                          MERGE( n_t_read, 0, bc_dirichlet_l),                                            &
                           .TRUE. )
 
        CALL get_variable( pids_id, 'ls_forcing_left_w',                                            &
@@ -458,7 +483,7 @@
                           MERGE( nest_offl%tind+1, 1, bc_dirichlet_l),                             &
                           MERGE( nyn-nys+1, 0, bc_dirichlet_l),                                    &
                           MERGE( nest_offl%nzw, 0, bc_dirichlet_l),                                &
-                          MERGE( 2, 0, bc_dirichlet_l),                                            &
+                          MERGE( n_t_read, 0, bc_dirichlet_l),                                            &
                           .TRUE. )
 
        IF ( .NOT. neutral )  THEN
@@ -469,7 +494,7 @@
                              MERGE( nest_offl%tind+1, 1, bc_dirichlet_l),                          &
                              MERGE( nyn-nys+1, 0, bc_dirichlet_l),                                 &
                              MERGE( nest_offl%nzu, 0, bc_dirichlet_l),                             &
-                             MERGE( 2, 0, bc_dirichlet_l),                                         &
+                             MERGE( n_t_read, 0, bc_dirichlet_l),                                         &
                              .TRUE. )
        ENDIF
 
@@ -481,7 +506,7 @@
                              MERGE( nest_offl%tind+1, 1, bc_dirichlet_l),                          &
                              MERGE( nyn-nys+1, 0, bc_dirichlet_l),                                 &
                              MERGE( nest_offl%nzu, 0, bc_dirichlet_l),                             &
-                             MERGE( 2, 0, bc_dirichlet_l),                                         &
+                             MERGE( n_t_read, 0, bc_dirichlet_l),                                         &
                              .TRUE. )
        ENDIF
 
@@ -496,7 +521,7 @@
                                    MERGE( nest_offl%tind+1, 1, bc_dirichlet_l),                    &
                                    MERGE( nyn-nys+1, 0, bc_dirichlet_l),                           &
                                    MERGE( nest_offl%nzu, 0, bc_dirichlet_l),                       &
-                                   MERGE( 2, 0, bc_dirichlet_l),                                   &
+                                   MERGE( n_t_read, 0, bc_dirichlet_l),                                   &
                                    .TRUE. )
                 nest_offl%chem_from_file_l(n) = .TRUE.
              ENDIF
@@ -511,7 +536,7 @@
                           MERGE( nest_offl%tind+1, 1, bc_dirichlet_r),                             &
                           MERGE( nyn-nys+1, 0, bc_dirichlet_r),                                    &
                           MERGE( nest_offl%nzu, 0, bc_dirichlet_r),                                &
-                          MERGE( 2, 0, bc_dirichlet_r),                                            &
+                          MERGE( n_t_read, 0, bc_dirichlet_r),                                            &
                           .TRUE. )
 
        CALL get_variable( pids_id, 'ls_forcing_right_v',                                           &
@@ -521,7 +546,7 @@
                           MERGE( nest_offl%tind+1, 1, bc_dirichlet_r),                             &
                           MERGE( nyn-nysv+1, 0, bc_dirichlet_r),                                   &
                           MERGE( nest_offl%nzu, 0, bc_dirichlet_r),                                &
-                          MERGE( 2, 0, bc_dirichlet_r),                                            &
+                          MERGE( n_t_read, 0, bc_dirichlet_r),                                            &
                           .TRUE. )
 
        CALL get_variable( pids_id, 'ls_forcing_right_w',                                           &
@@ -531,7 +556,7 @@
                           MERGE( nest_offl%tind+1, 1, bc_dirichlet_r),                             &
                           MERGE( nyn-nys+1, 0, bc_dirichlet_r),                                    &
                           MERGE( nest_offl%nzw, 0, bc_dirichlet_r),                                &
-                          MERGE( 2, 0, bc_dirichlet_r),                                            &
+                          MERGE( n_t_read, 0, bc_dirichlet_r),                                            &
                           .TRUE. )
 
        IF ( .NOT. neutral )  THEN
@@ -542,7 +567,7 @@
                              MERGE( nest_offl%tind+1, 1, bc_dirichlet_r),                          &
                              MERGE( nyn-nys+1, 0, bc_dirichlet_r),                                 &
                              MERGE( nest_offl%nzu, 0, bc_dirichlet_r),                             &
-                             MERGE( 2, 0, bc_dirichlet_r),                                         &
+                             MERGE( n_t_read, 0, bc_dirichlet_r),                                         &
                              .TRUE. )
        ENDIF
 
@@ -554,7 +579,7 @@
                              MERGE( nest_offl%tind+1, 1, bc_dirichlet_r),                          &
                              MERGE( nyn-nys+1, 0, bc_dirichlet_r),                                 &
                              MERGE( nest_offl%nzu, 0, bc_dirichlet_r),                             &
-                             MERGE( 2, 0, bc_dirichlet_r),                                         &
+                             MERGE( n_t_read, 0, bc_dirichlet_r),                                         &
                              .TRUE. )
        ENDIF
 
@@ -569,7 +594,7 @@
                                    MERGE( nest_offl%tind+1, 1, bc_dirichlet_r),                    &
                                    MERGE( nyn-nys+1, 0, bc_dirichlet_r),                           &
                                    MERGE( nest_offl%nzu, 0, bc_dirichlet_r),                       &
-                                   MERGE( 2, 0, bc_dirichlet_r),                                   &
+                                   MERGE( n_t_read, 0, bc_dirichlet_r),                                   &
                                    .TRUE. )
                 nest_offl%chem_from_file_r(n) = .TRUE.
              ENDIF
@@ -584,7 +609,7 @@
                           MERGE( nest_offl%tind+1, 1, bc_dirichlet_n ),                            &
                           MERGE( nxr-nxlu+1, 0, bc_dirichlet_n ),                                  &
                           MERGE( nest_offl%nzu, 0, bc_dirichlet_n ),                               &
-                          MERGE( 2, 0, bc_dirichlet_n ),                                           &
+                          MERGE( n_t_read, 0, bc_dirichlet_n ),                                           &
                           .TRUE. )
 
        CALL get_variable( pids_id, 'ls_forcing_north_v',                                           &
@@ -594,7 +619,7 @@
                           MERGE( nest_offl%tind+1, 1, bc_dirichlet_n ),                            &
                           MERGE( nxr-nxl+1, 0, bc_dirichlet_n ),                                   &
                           MERGE( nest_offl%nzu, 0, bc_dirichlet_n ),                               &
-                          MERGE( 2, 0, bc_dirichlet_n ),                                           &
+                          MERGE( n_t_read, 0, bc_dirichlet_n ),                                           &
                           .TRUE. )
 
        CALL get_variable( pids_id, 'ls_forcing_north_w',                                           &
@@ -604,7 +629,7 @@
                           MERGE( nest_offl%tind+1, 1, bc_dirichlet_n ),                            &
                           MERGE( nxr-nxl+1, 0, bc_dirichlet_n ),                                   &
                           MERGE( nest_offl%nzw, 0, bc_dirichlet_n ),                               &
-                          MERGE( 2, 0, bc_dirichlet_n ),                                           &
+                          MERGE( n_t_read, 0, bc_dirichlet_n ),                                           &
                           .TRUE. )
 
        IF ( .NOT. neutral )  THEN
@@ -615,7 +640,7 @@
                              MERGE( nest_offl%tind+1, 1, bc_dirichlet_n ),                         &
                              MERGE( nxr-nxl+1, 0, bc_dirichlet_n ),                                &
                              MERGE( nest_offl%nzu, 0, bc_dirichlet_n ),                            &
-                             MERGE( 2, 0, bc_dirichlet_n ),                                        &
+                             MERGE( n_t_read, 0, bc_dirichlet_n ),                                        &
                              .TRUE. )
        ENDIF
        IF ( humidity )  THEN
@@ -626,7 +651,7 @@
                              MERGE( nest_offl%tind+1, 1, bc_dirichlet_n ),                         &
                              MERGE( nxr-nxl+1, 0, bc_dirichlet_n ),                                &
                              MERGE( nest_offl%nzu, 0, bc_dirichlet_n ),                            &
-                             MERGE( 2, 0, bc_dirichlet_n ),                                        &
+                             MERGE( n_t_read, 0, bc_dirichlet_n ),                                        &
                              .TRUE. )
        ENDIF
 
@@ -641,7 +666,7 @@
                                    MERGE( nest_offl%tind+1, 1, bc_dirichlet_n ),                   &
                                    MERGE( nxr-nxl+1, 0, bc_dirichlet_n ),                          &
                                    MERGE( nest_offl%nzu, 0, bc_dirichlet_n ),                      &
-                                   MERGE( 2, 0, bc_dirichlet_n ),                                  &
+                                   MERGE( n_t_read, 0, bc_dirichlet_n ),                                  &
                                    .TRUE. )
                 nest_offl%chem_from_file_n(n) = .TRUE.
              ENDIF
@@ -656,7 +681,7 @@
                           MERGE( nest_offl%tind+1, 1, bc_dirichlet_s ),                            &
                           MERGE( nxr-nxlu+1, 0, bc_dirichlet_s ),                                  &
                           MERGE( nest_offl%nzu, 0, bc_dirichlet_s ),                               &
-                          MERGE( 2, 0, bc_dirichlet_s ),                                           &
+                          MERGE( n_t_read, 0, bc_dirichlet_s ),                                           &
                           .TRUE. )
 
        CALL get_variable( pids_id, 'ls_forcing_south_v',                                           &
@@ -666,7 +691,7 @@
                           MERGE( nest_offl%tind+1, 1, bc_dirichlet_s ),                            &
                           MERGE( nxr-nxl+1, 0, bc_dirichlet_s ),                                   &
                           MERGE( nest_offl%nzu, 0, bc_dirichlet_s ),                               &
-                          MERGE( 2, 0, bc_dirichlet_s ),                                           &
+                          MERGE( n_t_read, 0, bc_dirichlet_s ),                                           &
                           .TRUE. )
 
        CALL get_variable( pids_id, 'ls_forcing_south_w',                                           &
@@ -676,7 +701,7 @@
                           MERGE( nest_offl%tind+1, 1, bc_dirichlet_s ),                            &
                           MERGE( nxr-nxl+1, 0, bc_dirichlet_s ),                                   &
                           MERGE( nest_offl%nzw, 0, bc_dirichlet_s ),                               &
-                          MERGE( 2, 0, bc_dirichlet_s ),                                           &
+                          MERGE( n_t_read, 0, bc_dirichlet_s ),                                           &
                           .TRUE. )
 
        IF ( .NOT. neutral )  THEN
@@ -687,7 +712,7 @@
                              MERGE( nest_offl%tind+1, 1, bc_dirichlet_s ),                         &
                              MERGE( nxr-nxl+1, 0, bc_dirichlet_s ),                                &
                              MERGE( nest_offl%nzu, 0, bc_dirichlet_s ),                            &
-                             MERGE( 2, 0, bc_dirichlet_s ),                                        &
+                             MERGE( n_t_read, 0, bc_dirichlet_s ),                                        &
                              .TRUE. )
        ENDIF
        IF ( humidity )  THEN
@@ -698,7 +723,7 @@
                              MERGE( nest_offl%tind+1, 1, bc_dirichlet_s ),                         &
                              MERGE( nxr-nxl+1, 0, bc_dirichlet_s ),                                &
                              MERGE( nest_offl%nzu, 0, bc_dirichlet_s ),                            &
-                             MERGE( 2, 0, bc_dirichlet_s ),                                        &
+                             MERGE( n_t_read, 0, bc_dirichlet_s ),                                        &
                              .TRUE. )
        ENDIF
 
@@ -713,7 +738,7 @@
                                    MERGE( nest_offl%tind+1, 1, bc_dirichlet_s ),                   &
                                    MERGE( nxr-nxl+1, 0, bc_dirichlet_s ),                          &
                                    MERGE( nest_offl%nzu, 0, bc_dirichlet_s ),                      &
-                                   MERGE( 2, 0, bc_dirichlet_s ),                                  &
+                                   MERGE( n_t_read, 0, bc_dirichlet_s ),                                  &
                                    .TRUE. )
                 nest_offl%chem_from_file_s(n) = .TRUE.
              ENDIF
@@ -724,29 +749,29 @@
        CALL get_variable( pids_id, 'ls_forcing_top_u',                                             &
                           nest_offl%u_top(0:1,nys:nyn,nxlu:nxr),                                   &
                           nxlu, nys+1, nest_offl%tind+1,                                           &
-                          nxr-nxlu+1, nyn-nys+1, 2, .TRUE. )
+                          nxr-nxlu+1, nyn-nys+1, n_t_read, .TRUE. )
 
        CALL get_variable( pids_id, 'ls_forcing_top_v',                                             &
                           nest_offl%v_top(0:1,nysv:nyn,nxl:nxr),                                   &
                           nxl+1, nysv, nest_offl%tind+1,                                           &
-                          nxr-nxl+1, nyn-nysv+1, 2, .TRUE. )
+                          nxr-nxl+1, nyn-nysv+1, n_t_read, .TRUE. )
 
        CALL get_variable( pids_id, 'ls_forcing_top_w',                                             &
                           nest_offl%w_top(0:1,nys:nyn,nxl:nxr),                                    &
                           nxl+1, nys+1, nest_offl%tind+1,                                          &
-                          nxr-nxl+1, nyn-nys+1, 2, .TRUE. )
+                          nxr-nxl+1, nyn-nys+1, n_t_read, .TRUE. )
 
        IF ( .NOT. neutral )  THEN
           CALL get_variable( pids_id, 'ls_forcing_top_pt',                                         &
                              nest_offl%pt_top(0:1,nys:nyn,nxl:nxr),                                &
                              nxl+1, nys+1, nest_offl%tind+1,                                       &
-                             nxr-nxl+1, nyn-nys+1, 2, .TRUE. )
+                             nxr-nxl+1, nyn-nys+1, n_t_read, .TRUE. )
        ENDIF
        IF ( humidity )  THEN
           CALL get_variable( pids_id, 'ls_forcing_top_qv',                                         &
                              nest_offl%q_top(0:1,nys:nyn,nxl:nxr),                                 &
                              nxl+1, nys+1, nest_offl%tind+1,                                       &
-                             nxr-nxl+1, nyn-nys+1, 2, .TRUE. )
+                             nxr-nxl+1, nyn-nys+1, n_t_read, .TRUE. )
        ENDIF
 
        IF ( air_chemistry  .AND.  nesting_offline_chem )  THEN
@@ -756,11 +781,42 @@
                                    TRIM( nest_offl%var_names_chem_t(n) ),                          &
                                    nest_offl%chem_top(0:1,nys:nyn,nxl:nxr,n),                      &
                                    nxl+1, nys+1, nest_offl%tind+1,                                 &
-                                   nxr-nxl+1, nyn-nys+1, 2, .TRUE. )
+                                   nxr-nxl+1, nyn-nys+1, n_t_read, .TRUE. )
                 nest_offl%chem_from_file_t(n) = .TRUE.
              ENDIF
           ENDDO
        ENDIF
+
+!
+!-- If only one time level is available, fill the second interpolation slot.
+    IF ( nest_offl%nt == 1 )  THEN
+       IF ( ALLOCATED( nest_offl%u_l ) )    nest_offl%u_l(1,:,:)    = nest_offl%u_l(0,:,:)
+       IF ( ALLOCATED( nest_offl%v_l ) )    nest_offl%v_l(1,:,:)    = nest_offl%v_l(0,:,:)
+       IF ( ALLOCATED( nest_offl%w_l ) )    nest_offl%w_l(1,:,:)    = nest_offl%w_l(0,:,:)
+       IF ( ALLOCATED( nest_offl%pt_l ) )   nest_offl%pt_l(1,:,:)   = nest_offl%pt_l(0,:,:)
+       IF ( ALLOCATED( nest_offl%q_l ) )    nest_offl%q_l(1,:,:)    = nest_offl%q_l(0,:,:)
+       IF ( ALLOCATED( nest_offl%u_r ) )    nest_offl%u_r(1,:,:)    = nest_offl%u_r(0,:,:)
+       IF ( ALLOCATED( nest_offl%v_r ) )    nest_offl%v_r(1,:,:)    = nest_offl%v_r(0,:,:)
+       IF ( ALLOCATED( nest_offl%w_r ) )    nest_offl%w_r(1,:,:)    = nest_offl%w_r(0,:,:)
+       IF ( ALLOCATED( nest_offl%pt_r ) )   nest_offl%pt_r(1,:,:)   = nest_offl%pt_r(0,:,:)
+       IF ( ALLOCATED( nest_offl%q_r ) )    nest_offl%q_r(1,:,:)    = nest_offl%q_r(0,:,:)
+       IF ( ALLOCATED( nest_offl%u_n ) )    nest_offl%u_n(1,:,:)    = nest_offl%u_n(0,:,:)
+       IF ( ALLOCATED( nest_offl%v_n ) )    nest_offl%v_n(1,:,:)    = nest_offl%v_n(0,:,:)
+       IF ( ALLOCATED( nest_offl%w_n ) )    nest_offl%w_n(1,:,:)    = nest_offl%w_n(0,:,:)
+       IF ( ALLOCATED( nest_offl%pt_n ) )   nest_offl%pt_n(1,:,:)   = nest_offl%pt_n(0,:,:)
+       IF ( ALLOCATED( nest_offl%q_n ) )    nest_offl%q_n(1,:,:)    = nest_offl%q_n(0,:,:)
+       IF ( ALLOCATED( nest_offl%u_s ) )    nest_offl%u_s(1,:,:)    = nest_offl%u_s(0,:,:)
+       IF ( ALLOCATED( nest_offl%v_s ) )    nest_offl%v_s(1,:,:)    = nest_offl%v_s(0,:,:)
+       IF ( ALLOCATED( nest_offl%w_s ) )    nest_offl%w_s(1,:,:)    = nest_offl%w_s(0,:,:)
+       IF ( ALLOCATED( nest_offl%pt_s ) )   nest_offl%pt_s(1,:,:)   = nest_offl%pt_s(0,:,:)
+       IF ( ALLOCATED( nest_offl%q_s ) )    nest_offl%q_s(1,:,:)    = nest_offl%q_s(0,:,:)
+       IF ( ALLOCATED( nest_offl%u_top ) )  nest_offl%u_top(1,:,:)  = nest_offl%u_top(0,:,:)
+       IF ( ALLOCATED( nest_offl%v_top ) )  nest_offl%v_top(1,:,:)  = nest_offl%v_top(0,:,:)
+       IF ( ALLOCATED( nest_offl%w_top ) )  nest_offl%w_top(1,:,:)  = nest_offl%w_top(0,:,:)
+       IF ( ALLOCATED( nest_offl%pt_top ) ) nest_offl%pt_top(1,:,:) = nest_offl%pt_top(0,:,:)
+       IF ( ALLOCATED( nest_offl%q_top ) )  nest_offl%q_top(1,:,:)  = nest_offl%q_top(0,:,:)
+    ENDIF
+
 !
 !-- Read data for LOD 1, i.e. time-dependent profiles. In constrast to LOD 2 where the amount of IO
 !-- is larger, only the respective boundary processes read the data.
@@ -771,26 +827,26 @@
                              MERGE( nzb+1, 1, bc_dirichlet_l),                                     & ! start index z direction
                              MERGE( nest_offl%tind+1, 1, bc_dirichlet_l),                          & ! start index time dimension
                              MERGE( nest_offl%nzu, 0, bc_dirichlet_l),                             & ! number of elements along z
-                             MERGE( 2, 0, bc_dirichlet_l) )                                          ! number of time steps (2 or 0)
+                             MERGE( n_t_read, 0, bc_dirichlet_l) )                                          ! number of time steps (2 or 0)
           CALL get_variable( pids_id, 'ls_forcing_left_v',                                         &
                              nest_offl%v_l(0:1,:,1:1),                                             &
                              MERGE( nzb+1, 1, bc_dirichlet_l),                                     &
                              MERGE( nest_offl%tind+1, 1, bc_dirichlet_l),                          &
                              MERGE( nest_offl%nzu, 0, bc_dirichlet_l),                             &
-                             MERGE( 2, 0, bc_dirichlet_l) )
+                             MERGE( n_t_read, 0, bc_dirichlet_l) )
           CALL get_variable( pids_id, 'ls_forcing_left_w',                                         &
                              nest_offl%w_l(0:1,:,1:1),                                             &
                              MERGE( nzb+1, 1, bc_dirichlet_l),                                     &
                              MERGE( nest_offl%tind+1, 1, bc_dirichlet_l),                          &
                              MERGE( nest_offl%nzw, 0, bc_dirichlet_l),                             &
-                             MERGE( 2, 0, bc_dirichlet_l) )
+                             MERGE( n_t_read, 0, bc_dirichlet_l) )
           IF ( .NOT. neutral )  THEN
              CALL get_variable( pids_id, 'ls_forcing_left_pt',                                     &
                                 nest_offl%pt_l(0:1,:,1:1),                                         &
                                 MERGE( nzb+1, 1, bc_dirichlet_l),                                  &
                                 MERGE( nest_offl%tind+1, 1, bc_dirichlet_l),                       &
                                 MERGE( nest_offl%nzu, 0, bc_dirichlet_l),                          &
-                                MERGE( 2, 0, bc_dirichlet_l) )
+                                MERGE( n_t_read, 0, bc_dirichlet_l) )
           ENDIF
           IF ( humidity )  THEN
              CALL get_variable( pids_id, 'ls_forcing_left_qv',                                     &
@@ -798,7 +854,7 @@
                                 MERGE( nzb+1, 1, bc_dirichlet_l),                                  &
                                 MERGE( nest_offl%tind+1, 1, bc_dirichlet_l),                       &
                                 MERGE( nest_offl%nzu, 0, bc_dirichlet_l),                          &
-                                MERGE( 2, 0, bc_dirichlet_l) )
+                                MERGE( n_t_read, 0, bc_dirichlet_l) )
           ENDIF
           IF ( air_chemistry  .AND.  nesting_offline_chem )  THEN
              DO  n = 1, UBOUND( nest_offl%var_names_chem_l, 1 )
@@ -808,7 +864,7 @@
                                       MERGE( nzb+1, 1, bc_dirichlet_l),                            &
                                       MERGE( nest_offl%tind+1, 1, bc_dirichlet_l),                 &
                                       MERGE( nest_offl%nzu, 0, bc_dirichlet_l),                    &
-                                      MERGE( 2, 0, bc_dirichlet_l) )
+                                      MERGE( n_t_read, 0, bc_dirichlet_l) )
                    nest_offl%chem_from_file_l(n) = .TRUE.
                 ENDIF
              ENDDO
@@ -820,26 +876,26 @@
                              MERGE( nzb+1, 1, bc_dirichlet_r),                                     &
                              MERGE( nest_offl%tind+1, 1, bc_dirichlet_r),                          &
                              MERGE( nest_offl%nzu, 0, bc_dirichlet_r),                             &
-                             MERGE( 2, 0, bc_dirichlet_r) )
+                             MERGE( n_t_read, 0, bc_dirichlet_r) )
           CALL get_variable( pids_id, 'ls_forcing_right_v',                                        &
                              nest_offl%v_r(0:1,:,1:1),                                             &
                              MERGE( nzb+1, 1, bc_dirichlet_r),                                     &
                              MERGE( nest_offl%tind+1, 1, bc_dirichlet_r),                          &
                              MERGE( nest_offl%nzu, 0, bc_dirichlet_r),                             &
-                             MERGE( 2, 0, bc_dirichlet_r) )
+                             MERGE( n_t_read, 0, bc_dirichlet_r) )
           CALL get_variable( pids_id, 'ls_forcing_right_w',                                        &
                              nest_offl%w_r(0:1,:,1:1),                                             &
                              MERGE( nzb+1, 1, bc_dirichlet_r),                                     &
                              MERGE( nest_offl%tind+1, 1, bc_dirichlet_r),                          &
                              MERGE( nest_offl%nzw, 0, bc_dirichlet_r),                             &
-                             MERGE( 2, 0, bc_dirichlet_r) )
+                             MERGE( n_t_read, 0, bc_dirichlet_r) )
           IF ( .NOT. neutral )  THEN
              CALL get_variable( pids_id, 'ls_forcing_right_pt',                                    &
                                 nest_offl%pt_r(0:1,:,1:1),                                         &
                                 MERGE( nzb+1, 1, bc_dirichlet_r),                                  &
                                 MERGE( nest_offl%tind+1, 1, bc_dirichlet_r),                       &
                                 MERGE( nest_offl%nzu, 0, bc_dirichlet_r),                          &
-                                MERGE( 2, 0, bc_dirichlet_r) )
+                                MERGE( n_t_read, 0, bc_dirichlet_r) )
           ENDIF
           IF ( humidity )  THEN
              CALL get_variable( pids_id, 'ls_forcing_right_qv',                                    &
@@ -847,7 +903,7 @@
                                 MERGE( nzb+1, 1, bc_dirichlet_r),                                  &
                                 MERGE( nest_offl%tind+1, 1, bc_dirichlet_r),                       &
                                 MERGE( nest_offl%nzu, 0, bc_dirichlet_r),                          &
-                                MERGE( 2, 0, bc_dirichlet_r) )
+                                MERGE( n_t_read, 0, bc_dirichlet_r) )
           ENDIF
           IF ( air_chemistry  .AND.  nesting_offline_chem )  THEN
              DO  n = 1, UBOUND( nest_offl%var_names_chem_r, 1 )
@@ -857,7 +913,7 @@
                                       MERGE( nzb+1, 1, bc_dirichlet_r),                            &
                                       MERGE( nest_offl%tind+1, 1, bc_dirichlet_r),                 &
                                       MERGE( nest_offl%nzu, 0, bc_dirichlet_r),                    &
-                                      MERGE( 2, 0, bc_dirichlet_r) )
+                                      MERGE( n_t_read, 0, bc_dirichlet_r) )
                    nest_offl%chem_from_file_r(n) = .TRUE.
                 ENDIF
              ENDDO
@@ -869,26 +925,26 @@
                              MERGE( nzb+1, 1, bc_dirichlet_n),                                     &
                              MERGE( nest_offl%tind+1, 1, bc_dirichlet_n),                          &
                              MERGE( nest_offl%nzu, 0, bc_dirichlet_n),                             &
-                             MERGE( 2, 0, bc_dirichlet_n) )
+                             MERGE( n_t_read, 0, bc_dirichlet_n) )
           CALL get_variable( pids_id, 'ls_forcing_north_v',                                        &
                              nest_offl%v_n(0:1,:,1:1),                                             &
                              MERGE( nzb+1, 1, bc_dirichlet_n),                                     &
                              MERGE( nest_offl%tind+1, 1, bc_dirichlet_n),                          &
                              MERGE( nest_offl%nzu, 0, bc_dirichlet_n),                             &
-                             MERGE( 2, 0, bc_dirichlet_n) )
+                             MERGE( n_t_read, 0, bc_dirichlet_n) )
           CALL get_variable( pids_id, 'ls_forcing_north_w',                                        &
                              nest_offl%w_n(0:1,:,1:1),                                             &
                              MERGE( nzb+1, 1, bc_dirichlet_n),                                     &
                              MERGE( nest_offl%tind+1, 1, bc_dirichlet_n),                          &
                              MERGE( nest_offl%nzw, 0, bc_dirichlet_n),                             &
-                             MERGE( 2, 0, bc_dirichlet_n) )
+                             MERGE( n_t_read, 0, bc_dirichlet_n) )
           IF ( .NOT. neutral )  THEN
              CALL get_variable( pids_id, 'ls_forcing_north_pt',                                    &
                                 nest_offl%pt_n(0:1,:,1:1),                                         &
                                 MERGE( nzb+1, 1, bc_dirichlet_n),                                  &
                                 MERGE( nest_offl%tind+1, 1, bc_dirichlet_n),                       &
                                 MERGE( nest_offl%nzu, 0, bc_dirichlet_n),                          &
-                                MERGE( 2, 0, bc_dirichlet_n) )
+                                MERGE( n_t_read, 0, bc_dirichlet_n) )
           ENDIF
           IF ( humidity )  THEN
              CALL get_variable( pids_id, 'ls_forcing_north_qv',                                    &
@@ -896,7 +952,7 @@
                                 MERGE( nzb+1, 1, bc_dirichlet_n),                                  &
                                 MERGE( nest_offl%tind+1, 1, bc_dirichlet_n),                       &
                                 MERGE( nest_offl%nzu, 0, bc_dirichlet_n),                          &
-                                MERGE( 2, 0, bc_dirichlet_n) )
+                                MERGE( n_t_read, 0, bc_dirichlet_n) )
           ENDIF
           IF ( air_chemistry  .AND.  nesting_offline_chem )  THEN
              DO  n = 1, UBOUND( nest_offl%var_names_chem_n, 1 )
@@ -906,7 +962,7 @@
                                       MERGE( nzb+1, 1, bc_dirichlet_n),                            &
                                       MERGE( nest_offl%tind+1, 1, bc_dirichlet_n),                 &
                                       MERGE( nest_offl%nzu, 0, bc_dirichlet_n),                    &
-                                      MERGE( 2, 0, bc_dirichlet_n) )
+                                      MERGE( n_t_read, 0, bc_dirichlet_n) )
                    nest_offl%chem_from_file_n(n) = .TRUE.
                 ENDIF
              ENDDO
@@ -918,26 +974,26 @@
                              MERGE( nzb+1, 1, bc_dirichlet_s),                                     &
                              MERGE( nest_offl%tind+1, 1, bc_dirichlet_s),                          &
                              MERGE( nest_offl%nzu, 0, bc_dirichlet_s),                             &
-                             MERGE( 2, 0, bc_dirichlet_s) )
+                             MERGE( n_t_read, 0, bc_dirichlet_s) )
           CALL get_variable( pids_id, 'ls_forcing_south_v',                                        &
                              nest_offl%v_s(0:1,:,1:1),                                             &
                              MERGE( nzb+1, 1, bc_dirichlet_s),                                     &
                              MERGE( nest_offl%tind+1, 1, bc_dirichlet_s),                          &
                              MERGE( nest_offl%nzu, 0, bc_dirichlet_s),                             &
-                             MERGE( 2, 0, bc_dirichlet_s) )
+                             MERGE( n_t_read, 0, bc_dirichlet_s) )
           CALL get_variable( pids_id, 'ls_forcing_south_w',                                        &
                              nest_offl%w_s(0:1,:,1:1),                                             &
                              MERGE( nzb+1, 1, bc_dirichlet_s),                                     &
                              MERGE( nest_offl%tind+1, 1, bc_dirichlet_s),                          &
                              MERGE( nest_offl%nzw, 0, bc_dirichlet_s),                             &
-                             MERGE( 2, 0, bc_dirichlet_s) )
+                             MERGE( n_t_read, 0, bc_dirichlet_s) )
           IF ( .NOT. neutral )  THEN
              CALL get_variable( pids_id, 'ls_forcing_south_pt',                                    &
                                 nest_offl%pt_s(0:1,:,1:1),                                         &
                                 MERGE( nzb+1, 1, bc_dirichlet_s),                                  &
                                 MERGE( nest_offl%tind+1, 1, bc_dirichlet_s),                       &
                                 MERGE( nest_offl%nzu, 0, bc_dirichlet_s),                          &
-                                MERGE( 2, 0, bc_dirichlet_s) )
+                                MERGE( n_t_read, 0, bc_dirichlet_s) )
           ENDIF
           IF ( humidity )  THEN
              CALL get_variable( pids_id, 'ls_forcing_south_qv',                                    &
@@ -945,7 +1001,7 @@
                                 MERGE( nzb+1, 1, bc_dirichlet_s),                                  &
                                 MERGE( nest_offl%tind+1, 1, bc_dirichlet_s),                       &
                                 MERGE( nest_offl%nzu, 0, bc_dirichlet_s),                          &
-                                MERGE( 2, 0, bc_dirichlet_s) )
+                                MERGE( n_t_read, 0, bc_dirichlet_s) )
           ENDIF
           IF ( air_chemistry  .AND.  nesting_offline_chem )  THEN
              DO  n = 1, UBOUND( nest_offl%var_names_chem_s, 1 )
@@ -955,7 +1011,7 @@
                                       MERGE( nzb+1, 1, bc_dirichlet_s),                            &
                                       MERGE( nest_offl%tind+1, 1, bc_dirichlet_s),                 &
                                       MERGE( nest_offl%nzu, 0, bc_dirichlet_s),                    &
-                                      MERGE( 2, 0, bc_dirichlet_s) )
+                                      MERGE( n_t_read, 0, bc_dirichlet_s) )
                    nest_offl%chem_from_file_s(n) = .TRUE.
                 ENDIF
              ENDDO
@@ -1044,6 +1100,25 @@
     volume_flow_l = 0.0_wp
 
     d_area_t = 1.0_wp / ( ( nx + 1 ) * dx * ( ny + 1 ) * dy )
+!
+!-- Pull only boundary planes needed for host-side volume-flux sums.
+#if defined( _OPENACC )
+    IF ( enable_openacc  .AND.  acc_is_present( u ) )  THEN
+       IF ( bc_dirichlet_l )  THEN
+          !$ACC UPDATE HOST(u(:,:,nxl:nxl))
+       ENDIF
+       IF ( bc_dirichlet_r )  THEN
+          !$ACC UPDATE HOST(u(:,:,nxr+1:nxr+1))
+       ENDIF
+       IF ( bc_dirichlet_s )  THEN
+          !$ACC UPDATE HOST(v(:,nys:nys,:))
+       ENDIF
+       IF ( bc_dirichlet_n )  THEN
+          !$ACC UPDATE HOST(v(:,nyn+1:nyn+1,:))
+       ENDIF
+       !$ACC UPDATE HOST(w(nzt:nzt,:,:))
+    ENDIF
+#endif
 
     IF ( bc_dirichlet_l )  THEN
        i = nxl
@@ -1108,6 +1183,13 @@
           ENDDO
        ENDDO
     ENDDO
+!
+!-- Push only the corrected top w layers to the device (not the full 3-D fields).
+#if defined( _OPENACC )
+    IF ( enable_openacc  .AND.  acc_is_present( w ) )  THEN
+       !$ACC UPDATE DEVICE(w(nzt:nzt+1,:,:), w_p(nzt:nzt+1,:,:))
+    ENDIF
+#endif
 
     CALL  cpu_log( log_point(58), 'offline nesting', 'stop' )
 
@@ -2200,6 +2282,66 @@
           chem_species(n)%conc_p(nzt+1,:,:) = chem_species(n)%conc(nzt+1,:,:)
        ENDIF
     ENDDO
+!
+!-- Push only host-updated lateral/top BC planes to the device (avoid full-field UPDATE
+!-- that overwrites GPU interior points and burns PCIe bandwidth).
+#if defined( _OPENACC )
+    IF ( enable_openacc  .AND.  acc_is_present( u ) )  THEN
+       IF ( bc_dirichlet_l )  THEN
+          !$ACC UPDATE DEVICE(u(:,:,nxlg:nxl), u_p(:,:,nxlg:nxl),                                  &
+          !$ACC               v(:,:,nxlg:nxl), v_p(:,:,nxlg:nxl),                                  &
+          !$ACC               w(:,:,nxlg:nxl), w_p(:,:,nxlg:nxl))
+          IF ( .NOT. neutral )  THEN
+             !$ACC UPDATE DEVICE(pt(:,:,nxlg:nxl), pt_p(:,:,nxlg:nxl))
+          ENDIF
+          IF ( humidity )  THEN
+             !$ACC UPDATE DEVICE(q(:,:,nxlg:nxl), q_p(:,:,nxlg:nxl))
+          ENDIF
+       ENDIF
+       IF ( bc_dirichlet_r )  THEN
+          !$ACC UPDATE DEVICE(u(:,:,nxr:nxrg), u_p(:,:,nxr:nxrg),                                  &
+          !$ACC               v(:,:,nxr:nxrg), v_p(:,:,nxr:nxrg),                                  &
+          !$ACC               w(:,:,nxr:nxrg), w_p(:,:,nxr:nxrg))
+          IF ( .NOT. neutral )  THEN
+             !$ACC UPDATE DEVICE(pt(:,:,nxr:nxrg), pt_p(:,:,nxr:nxrg))
+          ENDIF
+          IF ( humidity )  THEN
+             !$ACC UPDATE DEVICE(q(:,:,nxr:nxrg), q_p(:,:,nxr:nxrg))
+          ENDIF
+       ENDIF
+       IF ( bc_dirichlet_s )  THEN
+          !$ACC UPDATE DEVICE(u(:,nysg:nys,:), u_p(:,nysg:nys,:),                                  &
+          !$ACC               v(:,nysg:nys,:), v_p(:,nysg:nys,:),                                  &
+          !$ACC               w(:,nysg:nys,:), w_p(:,nysg:nys,:))
+          IF ( .NOT. neutral )  THEN
+             !$ACC UPDATE DEVICE(pt(:,nysg:nys,:), pt_p(:,nysg:nys,:))
+          ENDIF
+          IF ( humidity )  THEN
+             !$ACC UPDATE DEVICE(q(:,nysg:nys,:), q_p(:,nysg:nys,:))
+          ENDIF
+       ENDIF
+       IF ( bc_dirichlet_n )  THEN
+          !$ACC UPDATE DEVICE(u(:,nyn:nyng,:), u_p(:,nyn:nyng,:),                                  &
+          !$ACC               v(:,nyn:nyng,:), v_p(:,nyn:nyng,:),                                  &
+          !$ACC               w(:,nyn:nyng,:), w_p(:,nyn:nyng,:))
+          IF ( .NOT. neutral )  THEN
+             !$ACC UPDATE DEVICE(pt(:,nyn:nyng,:), pt_p(:,nyn:nyng,:))
+          ENDIF
+          IF ( humidity )  THEN
+             !$ACC UPDATE DEVICE(q(:,nyn:nyng,:), q_p(:,nyn:nyng,:))
+          ENDIF
+       ENDIF
+       !$ACC UPDATE DEVICE(u(nzt:nzt+1,:,:), u_p(nzt:nzt+1,:,:),                                   &
+       !$ACC               v(nzt:nzt+1,:,:), v_p(nzt:nzt+1,:,:),                                   &
+       !$ACC               w(nzt:nzt+1,:,:), w_p(nzt:nzt+1,:,:))
+       IF ( .NOT. neutral )  THEN
+          !$ACC UPDATE DEVICE(pt(nzt:nzt+1,:,:), pt_p(nzt:nzt+1,:,:))
+       ENDIF
+       IF ( humidity )  THEN
+          !$ACC UPDATE DEVICE(q(nzt:nzt+1,:,:), q_p(nzt:nzt+1,:,:))
+       ENDIF
+    ENDIF
+#endif
 
     CALL exchange_horiz( u, nbgp )
     CALL exchange_horiz( u_p, nbgp )
@@ -2230,6 +2372,11 @@
 !-- points.
     w(nzt+1,:,:)   = w(nzt,:,:)
     w_p(nzt+1,:,:) = w(nzt+1,:,:)
+#if defined( _OPENACC )
+    IF ( enable_openacc  .AND.  acc_is_present( w ) )  THEN
+       !$ACC UPDATE DEVICE(w(nzt:nzt+1,:,:), w_p(nzt:nzt+1,:,:))
+    ENDIF
+#endif
 !
 !-- Mesoscale offline nesting for other modules.
     CALL nesting_offl_bc_modules
@@ -2332,6 +2479,19 @@
 !-- Further, adjust Rayleigh damping height in case of time-changing boundary layer heights.
 !-- Note, this is only possible when potential temperature is available.
     IF ( .NOT. neutral )  CALL adjust_sponge_layer
+!
+!-- Sync damping profiles / Rayleigh coefficients to GPU (COPYIN at time_integration entry).
+#if defined( _OPENACC )
+    IF ( enable_openacc  .AND.  acc_is_present( u_init ) )  THEN
+       !$ACC UPDATE DEVICE(u_init, v_init)
+       IF ( .NOT. neutral )  THEN
+          !$ACC UPDATE DEVICE(pt_init, rdf, rdf_sc)
+       ENDIF
+       IF ( humidity )  THEN
+          !$ACC UPDATE DEVICE(q_init)
+       ENDIF
+    ENDIF
+#endif
 
     CALL  cpu_log( log_point(58), 'offline nesting', 'stop' )
 
@@ -2362,10 +2522,14 @@
 !
 !-- Determine interpolation factor and limit it to 1. This is because t+dt can slightly exceed
 !-- time(tind_p) before boundary data is updated again.
-    fac_dt = ( time_since_reference_point - nest_offl%time(nest_offl%tind) + dt_3d ) /             &
-             ( nest_offl%time(nest_offl%tind_p) - nest_offl%time(nest_offl%tind) )
-
-    fac_dt = MIN( 1.0_wp, fac_dt )
+!-- For single-time drivers (tind==tind_p) keep fac_dt=0 (no time change).
+    IF ( nest_offl%tind_p == nest_offl%tind )  THEN
+       fac_dt = 0.0_wp
+    ELSE
+       fac_dt = ( time_since_reference_point - nest_offl%time(nest_offl%tind) + dt_3d ) /          &
+                ( nest_offl%time(nest_offl%tind_p) - nest_offl%time(nest_offl%tind) )
+       fac_dt = MIN( 1.0_wp, fac_dt )
+    ENDIF
 
  END SUBROUTINE nesting_offl_interpolation_factor
 
@@ -3013,10 +3177,16 @@
 !-- Check if sufficient time steps are provided to cover the entire simulation. Note, dynamic input
 !-- is only required for the 3D simulation, not for the soil/wall spinup. However, as the spinup
 !-- time is added to the end_time, this must be considered here.
-    IF ( end_time - spinup_time > nest_offl%time(nest_offl%nt-1) )  THEN
-       message_string = 'end_time of the simulation exceeds the ' //                               &
-                        'time dimension in the dynamic input file'
-       CALL message( 'nesting_offl_init', 'MSN0005', 1, 2, 0, 6, 0 )
+!-- If end_time exceeds the last dynamic time, keep using the last available boundary data
+!-- (fac_dt is already capped at 1); warn instead of aborting so short drivers still run.
+    IF ( nest_offl%nt > 1  .AND.                                                                   &
+         end_time - spinup_time > nest_offl%time(nest_offl%nt-1) + 1.0E-6_wp )  THEN
+       WRITE( message_string, '(2A,F0.3,A,F0.3)' )                                                 &
+            'end_time exceeds last time in dynamic input file; ',                                  &
+            'holding last boundary data. end_time-spinup=',                                        &
+            end_time - spinup_time, ' last_dynamic_time=',                                         &
+            nest_offl%time(nest_offl%nt-1)
+       CALL message( 'nesting_offl_init', 'MSN0005', 0, 1, 0, 6, 0 )
     ENDIF
 !
 !-- Set indicies for boundary grid points
