@@ -544,7 +544,8 @@
        hom(:,1,1,sr) = sums(:,1)             ! u
        hom(:,1,2,sr) = sums(:,2)             ! v
        hom(:,1,4,sr) = sums(:,4)             ! pt
-       !$ACC UPDATE DEVICE(hom(:,1,1,sr), hom(:,1,2,sr), hom(:,1,4,sr)) IF(enable_openacc)
+!      The host owns hom; copy its whole device mirror to avoid section-update lowering errors.
+       !$ACC UPDATE DEVICE(hom) IF(enable_openacc)
 
 !
 !--    Salinity
@@ -741,11 +742,12 @@
                    !$ACC ATOMIC UPDATE
                    sums_l(nzb+3,pr_palm,tn) = sums_l(nzb+3,pr_palm,tn) + surf_def%ts(m) *          &
                                                                          rmask(j,i,sr)
-#if ! defined( _OPENACC )
                    IF ( humidity )  THEN
+                      !$ACC ATOMIC UPDATE
                       sums_l(nzb+12,pr_palm,tn) = sums_l(nzb+12,pr_palm,tn) + surf_def%qs(m) *     &
                                                                               rmask(j,i,sr)
                    ENDIF
+#if ! defined( _OPENACC )
                    IF ( passive_scalar )  THEN
                       sums_l(nzb+13,pr_palm,tn) = sums_l(nzb+13,pr_palm,tn) + surf_def%ss(m) *     &
                                                                               rmask(j,i,sr)
@@ -1027,10 +1029,15 @@
                          sums_l(k,65,tn) = sums_l(k,65,tn) + surf_def%sasws(m) *                   &
                                            scalarflux_output_conversion(k) * rmask(j,i,sr)  ! w"sa"
                       ENDIF
+#endif
                       IF ( humidity )  THEN
+                         !$ACC ATOMIC UPDATE
                          sums_l(k,48,tn) = sums_l(k,48,tn) +                                       &
                                            waterflux_output_conversion(k) *                        &
                                            surf_def%qsws(m) * rmask(j,i,sr)  ! w"q" (w"qv")
+                      ENDIF
+#if ! defined( _OPENACC )
+                      IF ( humidity )  THEN
                          sums_l(k,45,tn) = sums_l(k,45,tn) +  (                                    &
                                            ( 1.0_wp + 0.61_wp * q(k,j,i) ) *                       &
                                            surf_def%shf(m) + 0.61_wp * pt(k,j,i) *                 &
@@ -1172,13 +1179,16 @@
              ENDIF
 
 
-#if ! defined( _OPENACC )
              IF ( .NOT. neutral )  THEN
                 DO  m = surf_def%start_index(j,i), surf_def%end_index(j,i)
                    IF ( surf_def%upward(m) )  THEN
+                      !$ACC ATOMIC UPDATE
                       sums_l(nzb,112,tn) = sums_l(nzb,112,tn) + surf_def%ol(m) * rmask(j,i,sr) ! L
                    ENDIF
                 ENDDO
+             ENDIF
+#if ! defined( _OPENACC )
+             IF ( .NOT. neutral )  THEN
                 DO  m = surf_lsm%start_index(j,i), surf_lsm%end_index(j,i)
                    IF ( surf_lsm%upward(m) )  THEN
                       sums_l(nzb,112,tn) = sums_l(nzb,112,tn) + surf_lsm%ol(m) * rmask(j,i,sr) ! L

@@ -72,6 +72,7 @@
     INTEGER(iwp), DIMENSION(3), OPTIONAL ::  value1_ijk  !<
 
     REAL(wp) ::  offset            !<
+    REAL(wp) ::  signed_peak       !< signed value at the selected absolute maximum
     REAL(wp) ::  value             !<
     REAL(wp), OPTIONAL ::  value1  !<
 
@@ -208,7 +209,7 @@
 !
 !--       Only one matching element may write the shared coordinates.
           !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
-          !$ACC PRESENT(ar) COPYOUT(fmax_ijk_l) IF(enable_openacc)
+          !$ACC PRESENT(ar) COPYOUT(fmax_ijk_l, signed_peak) IF(enable_openacc)
           DO  k = k1, k2
              DO  j = j1, j2
                 DO  i = i1, i2
@@ -216,19 +217,16 @@
                       fmax_ijk_l(1) = i
                       fmax_ijk_l(2) = j
                       fmax_ijk_l(3) = k
+                      signed_peak = ar(i,j,k)
                    ENDIF
                 ENDDO
              ENDDO
           ENDDO
-!
-!--       We found a single maximum element and correctly got its position. Transfer its value to
-!--       handle the negative case correctly.
-          !$ACC UPDATE HOST(ar(fmax_ijk_l(1):fmax_ijk_l(1),fmax_ijk_l(2),fmax_ijk_l(3))) IF(enable_openacc)
        ELSE
 !
 !--       We found no maximum element (?) or multiple, so the position is not correct.
 !--       Copy the full array to the host and determine the maximum sequentially...
-          !$ACC UPDATE HOST(ar(i1:i2,j1:j2,k1:k2)) IF(enable_openacc)
+          !$ACC UPDATE HOST(ar) IF(enable_openacc)
 #endif
 
 !
@@ -250,6 +248,8 @@
           ENDDO
        ENDDO
 
+       signed_peak = ar(fmax_ijk_l(1),fmax_ijk_l(2),fmax_ijk_l(3))
+
 #if defined( _OPENACC )
 !
 !--    Close ELSE case from above
@@ -259,7 +259,7 @@
 !
 !--    Set a flag in case that the determined value is negative.
 !--    A constant offset has to be subtracted in order to handle the special case i=0 correctly.
-       IF ( ar(fmax_ijk_l(1),fmax_ijk_l(2),fmax_ijk_l(3)) < 0.0_wp )  THEN
+       IF ( signed_peak < 0.0_wp )  THEN
           fmax_ijk_l(1) = -fmax_ijk_l(1) - 10
        ENDIF
 
