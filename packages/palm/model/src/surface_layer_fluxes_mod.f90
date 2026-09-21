@@ -1132,7 +1132,7 @@
     ELSE
        !$OMP PARALLEL DO
        !$ACC PARALLEL LOOP &
-       !$ACC PRESENT(downward, drho_air_zw, k, koff, ns, pt1, rib, shf, upward, uvw_abs, z_mo) &
+       !$ACC FIRSTPRIVATE(ns) PRESENT(downward, drho_air_zw, k, koff, pt1, rib, shf, upward, uvw_abs, z_mo) &
        !$ACC IF(enable_openacc)
        DO  m = 1, ns
           rib(m) = -g * z_mo(m) * shf(m) / ( uvw_abs(m)**3 * pt1(m) * kappa**2 + 1.0E-20_wp )
@@ -1282,7 +1282,7 @@
 
     !$OMP PARALLEL DO PRIVATE( i, j, k )
     !$ACC PARALLEL LOOP PRIVATE(i, j, k) &
-    !$ACC PRESENT(pt, q, surf) &
+    !$ACC PRESENT(pt, surf) NO_CREATE(q) &
     !$ACC IF(enable_openacc)
     DO  m = 1, surf%ns
        i = surf%iref(m)

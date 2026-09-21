@@ -1964,7 +1964,7 @@
        IF ( sr == 0 )  THEN
 !
 !--       Update required because w-profile on device is used in advec_ws.
-          !$ACC UPDATE DEVICE( hom(:,1,3,0) ) IF(enable_openacc)
+          !$ACC UPDATE DEVICE( hom ) IF(enable_openacc)
        ENDIF
        hom(:,1,8,sr)  = sums(:,8)      ! e     profiles 5-7 are initial profiles
        hom(:,1,9,sr)  = sums(:,9)      ! km
