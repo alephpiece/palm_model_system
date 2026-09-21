@@ -545,19 +545,19 @@
 !$ACC COPY(ql(nzb:nzt+1,nysg:nyng,nxlg:nxrg)) &
 !$ACC COPY(tq_m(nzb:nzt+1,nysg:nyng,nxlg:nxrg)) &
 !$ACC COPY(vpt(nzb:nzt+1,nysg:nyng,nxlg:nxrg)) &
-!$ACC COPY(q_init(:)) &
-!$ACC COPY(exner(:)) &
-!$ACC COPY(d_exner(:)) &
-!$ACC COPY(hyp(:)) &
-!$ACC COPY(sums_wsts_bc_l(:,:)) IF(enable_openacc)
+!$ACC COPY(q_init) &
+!$ACC COPY(exner) &
+!$ACC COPY(d_exner) &
+!$ACC COPY(hyp) &
+!$ACC COPY(sums_wsts_bc_l) IF(enable_openacc)
 
 !$ACC DATA &
-!$ACC COPYIN(diss_l_u(0:nz+1,nys:nyn,0), flux_l_u(0:nz+1,nys:nyn,0)) &
-!$ACC COPYIN(diss_l_v(0:nz+1,nys:nyn,0), flux_l_v(0:nz+1,nys:nyn,0)) &
-!$ACC COPYIN(diss_l_w(0:nz+1,nys:nyn,0), flux_l_w(0:nz+1,nys:nyn,0)) &
-!$ACC COPYIN(diss_s_u(0:nz+1,0), flux_s_u(0:nz+1,0)) &
-!$ACC COPYIN(diss_s_v(0:nz+1,0), flux_s_v(0:nz+1,0)) &
-!$ACC COPYIN(diss_s_w(0:nz+1,0), flux_s_w(0:nz+1,0)) &
+!$ACC COPYIN(diss_l_u, flux_l_u) &
+!$ACC COPYIN(diss_l_v, flux_l_v) &
+!$ACC COPYIN(diss_l_w, flux_l_w) &
+!$ACC COPYIN(diss_s_u, flux_s_u) &
+!$ACC COPYIN(diss_s_v, flux_s_v) &
+!$ACC COPYIN(diss_s_w, flux_s_w) &
 !$ACC COPY(diss_p(nzb:nzt+1,nysg:nyng,nxlg:nxrg)) &
 !$ACC COPY(e_p(nzb:nzt+1,nysg:nyng,nxlg:nxrg)) &
 !$ACC COPY(u_p(nzb:nzt+1,nysg:nyng,nxlg:nxrg)) &
@@ -574,26 +574,26 @@
 !$ACC COPY(tpt_m(nzb:nzt+1,nysg:nyng,nxlg:nxrg)) IF(enable_openacc)
 
 !$ACC DATA &
-!$ACC COPYIN(rho_air(nzb:nzt+1), drho_air(nzb:nzt+1)) &
-!$ACC COPYIN(rho_air_zw(nzb:nzt+1), drho_air_zw(nzb:nzt+1)) &
-!$ACC COPYIN(zu(nzb:nzt+1)) &
-!$ACC COPYIN(dzu(1:nzt+1), dzw(1:nzt+1)) &
-!$ACC COPYIN(ddzu(1:nzt+1), dd2zu(1:nzt)) &
-!$ACC COPYIN(ddzw(1:nzt+1)) &
-!$ACC COPYIN(heatflux_output_conversion(nzb:nzt+1)) &
-!$ACC COPYIN(waterflux_output_conversion(nzb:nzt+1)) &
-!$ACC COPYIN(momentumflux_output_conversion(nzb:nzt+1)) &
-!$ACC COPYIN(ngp_2dh(:)) &
-!$ACC COPYIN(ngp_2dh_s_inner(:,:)) &
-!$ACC COPYIN(ngp_2dh_wgrid(nzb+1:nzt)) &
-!$ACC COPYIN(rdf(nzb+1:nzt), rdf_sc(nzb+1:nzt)) &
-!$ACC COPYIN(ptdf_x(nxlg:nxrg), ptdf_y(nysg:nyng)) &
-!$ACC COPYIN(odf_x(nxlg:nxrg), odf_y(nysg:nyng)) &
-!$ACC COPYIN(ref_state(0:nz+1)) &
-!$ACC COPYIN(u_init(0:nz+1), v_init(0:nz+1)) &
-!$ACC COPYIN(u_stokes_zu(nzb:nzt+1), v_stokes_zu(nzb:nzt+1)) &
-!$ACC COPYIN(pt_init(0:nz+1)) &
-!$ACC COPYIN(ug(0:nz+1), vg(0:nz+1)) IF(enable_openacc)
+!$ACC COPYIN(rho_air, drho_air) &
+!$ACC COPYIN(rho_air_zw, drho_air_zw) &
+!$ACC COPYIN(zu) &
+!$ACC COPYIN(dzu, dzw) &
+!$ACC COPYIN(ddzu, dd2zu) &
+!$ACC COPYIN(ddzw) &
+!$ACC COPYIN(heatflux_output_conversion) &
+!$ACC COPYIN(waterflux_output_conversion) &
+!$ACC COPYIN(momentumflux_output_conversion) &
+!$ACC COPYIN(ngp_2dh) &
+!$ACC COPYIN(ngp_2dh_s_inner) &
+!$ACC COPYIN(ngp_2dh_wgrid) &
+!$ACC COPYIN(rdf, rdf_sc) &
+!$ACC COPYIN(ptdf_x, ptdf_y) &
+!$ACC COPYIN(odf_x, odf_y) &
+!$ACC COPYIN(ref_state) &
+!$ACC COPYIN(u_init, v_init) &
+!$ACC COPYIN(u_stokes_zu, v_stokes_zu) &
+!$ACC COPYIN(pt_init) &
+!$ACC COPYIN(ug, vg) IF(enable_openacc)
 
 !
 !-- Copy data from control_parameters
@@ -630,23 +630,23 @@
 !$ACC COPYIN(rmask(nysg:nyng,nxlg:nxrg,0:statistic_regions)) &
 !$ACC COPYIN(weight_substep(1:intermediate_timestep_count_max)) &
 !$ACC COPY(sums_l) &
-!$ACC COPY(sums_l_l(nzb:nzt+1,0:statistic_regions,0)) &
-!$ACC COPY(sums_us2_ws_l(nzb:nzt+1,0)) &
-!$ACC COPY(sums_wsus_ws_l(nzb:nzt+1,0)) &
-!$ACC COPY(sums_vs2_ws_l(nzb:nzt+1,0)) &
-!$ACC COPY(sums_wsvs_ws_l(nzb:nzt+1,0)) &
-!$ACC COPY(sums_ws2_ws_l(nzb:nzt+1,0)) &
-!$ACC COPY(sums_wspts_ws_l(nzb:nzt+1,0)) &
-!$ACC COPY(sums_wssas_ws_l(nzb:nzt+1,0)) &
-!$ACC COPY(sums_wsqs_ws_l(nzb:nzt+1,0)) &
-!$ACC COPY(sums_wsqcs_ws_l(nzb:nzt+1,0)) &
-!$ACC COPY(sums_wsqis_ws_l(nzb:nzt+1,0)) &
-!$ACC COPY(sums_wsqrs_ws_l(nzb:nzt+1,0)) &
-!$ACC COPY(sums_wsncs_ws_l(nzb:nzt+1,0)) &
-!$ACC COPY(sums_wsnis_ws_l(nzb:nzt+1,0)) &
-!$ACC COPY(sums_wsnrs_ws_l(nzb:nzt+1,0)) &
-!$ACC COPY(sums_wsss_ws_l(nzb:nzt+1,0)) &
-!$ACC COPY(sums_salsa_ws_l(nzb:nzt+1,0)) IF(enable_openacc)
+!$ACC COPY(sums_l_l) &
+!$ACC COPY(sums_us2_ws_l) &
+!$ACC COPY(sums_wsus_ws_l) &
+!$ACC COPY(sums_vs2_ws_l) &
+!$ACC COPY(sums_wsvs_ws_l) &
+!$ACC COPY(sums_ws2_ws_l) &
+!$ACC COPY(sums_wspts_ws_l) &
+!$ACC COPY(sums_wssas_ws_l) &
+!$ACC COPY(sums_wsqs_ws_l) &
+!$ACC COPY(sums_wsqcs_ws_l) &
+!$ACC COPY(sums_wsqis_ws_l) &
+!$ACC COPY(sums_wsqrs_ws_l) &
+!$ACC COPY(sums_wsncs_ws_l) &
+!$ACC COPY(sums_wsnis_ws_l) &
+!$ACC COPY(sums_wsnrs_ws_l) &
+!$ACC COPY(sums_wsss_ws_l) &
+!$ACC COPY(sums_salsa_ws_l) IF(enable_openacc)
 
 
 !
@@ -825,7 +825,7 @@
 !--          Assure that ref_state does not become zero at any level
 !--          ( might be the case if a vertical level is completely occupied
 !--            with topography ).
-             ref_state = MERGE( MAXVAL(ref_state), ref_state, ref_state == 0.0_wp )
+             ref_state(:) = MERGE( MAXVAL(ref_state), ref_state, ref_state == 0.0_wp )
           ENDIF
 
           IF ( ( ws_scheme_mom .OR. ws_scheme_sca )  .AND.  intermediate_timestep_count == 1 )     &

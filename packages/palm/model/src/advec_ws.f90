@@ -3794,14 +3794,16 @@
     !$ACC PRESENT(tend) &
     !$ACC PRESENT(hom(:,1,1:3,0)) &
     !$ACC PRESENT(weight_substep(intermediate_timestep_count)) &
-    !$ACC PRESENT(sums_wspts_ws_l, sums_wssas_ws_l) &
-    !$ACC PRESENT(sums_wsqs_ws_l, sums_wsqcs_ws_l) &
-    !$ACC PRESENT(sums_wsqrs_ws_l, sums_wsncs_ws_l) &
-    !$ACC PRESENT(sums_wsnrs_ws_l, sums_wsss_ws_l) &
-    !$ACC PRESENT(sums_wsnis_ws_l, sums_wsqis_ws_l) &
-    !$ACC PRESENT(sums_wsngs_ws_l, sums_wsqgs_ws_l) &
-    !$ACC PRESENT(sums_wsnss_ws_l, sums_wsqss_ws_l) &
-    !$ACC PRESENT(sums_salsa_ws_l, topo_flags) IF(enable_openacc)
+    !$ACC PRESENT(sums_wspts_ws_l) &
+    !$ACC NO_CREATE(sums_wssas_ws_l) &
+    !$ACC NO_CREATE(sums_wsqs_ws_l, sums_wsqcs_ws_l) &
+    !$ACC NO_CREATE(sums_wsqrs_ws_l, sums_wsncs_ws_l) &
+    !$ACC NO_CREATE(sums_wsnrs_ws_l, sums_wsss_ws_l) &
+    !$ACC NO_CREATE(sums_wsnis_ws_l, sums_wsqis_ws_l) &
+    !$ACC NO_CREATE(sums_wsngs_ws_l, sums_wsqgs_ws_l) &
+    !$ACC NO_CREATE(sums_wsnss_ws_l, sums_wsqss_ws_l) &
+    !$ACC NO_CREATE(sums_salsa_ws_l) &
+    !$ACC PRESENT(topo_flags) IF(enable_openacc)
     DO  i = nxl, nxr
        DO  j = nys, nyn
 !

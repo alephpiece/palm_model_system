@@ -805,7 +805,7 @@
        !$OMP PARALLEL DO PRIVATE( ol_prev, iter, ol_m, ol_l, ol_u, f, f_d_ol)
        !$ACC PARALLEL LOOP &
        !$ACC PRIVATE(ol_prev, ol_m, ol_l, ol_u, f, f_d_ol) &
-       !$ACC PRESENT(ns, ln_z_z0, ln_z_z0h, ol, rib, z0, z0h, z_mo) IF(enable_openacc)
+       !$ACC FIRSTPRIVATE(ns) PRESENT(ln_z_z0, ln_z_z0h, ol, rib, z0, z0h, z_mo) IF(enable_openacc)
        DO  m = 1, ns
 !
 !--       Store current value in case the Newton iteration fails.
@@ -856,7 +856,7 @@
 !--       In case of divergence, use the value(s) of the previous time step.
           IF ( iter > 1000 )  THEN
              !$ACC PARALLEL LOOP &
-             !$ACC PRESENT(ns, ol) IF(enable_openacc)
+             !$ACC FIRSTPRIVATE(ns) PRESENT(ol) IF(enable_openacc)
              DO  m = 1, ns
                 IF ( .NOT. convergence_reached(m) )  ol(m) = ol_prev_vec(m)
              ENDDO
@@ -867,7 +867,7 @@
           !$ACC PRIVATE(arg_h_zmo_m, arg_h_z0h_m, arg_m_zmo_m, arg_m_z0_m) &
           !$ACC PRIVATE(arg_h_zmo_u, arg_h_z0h_u, arg_m_zmo_u, arg_m_z0_u) &
           !$ACC PRIVATE(arg_h_zmo_l, arg_h_z0h_l, arg_m_zmo_l, arg_m_z0_l) &
-          !$ACC PRESENT(ns, ln_z_z0, ln_z_z0h, ol, rib, z0, z0h, z_mo) IF(enable_openacc)
+          !$ACC FIRSTPRIVATE(ns) PRESENT(ln_z_z0, ln_z_z0h, ol, rib, z0, z0h, z_mo) IF(enable_openacc)
           DO  m = 1, ns
              IF ( .NOT. convergence_reached(m) ) THEN
 
@@ -955,7 +955,7 @@
 !
 !--       Assure that Obukhov length does not become zero.
           !$ACC PARALLEL LOOP &
-          !$ACC PRESENT(surf, ns, ol) IF(enable_openacc)
+          !$ACC FIRSTPRIVATE(ns) PRESENT(surf, ol) IF(enable_openacc)
           DO  m = 1, surf%ns
              IF ( .NOT. convergence_reached(m) ) THEN
                 IF ( ABS( ol(m) ) < ol_min )  THEN

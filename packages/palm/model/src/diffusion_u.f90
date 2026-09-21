@@ -124,8 +124,9 @@
        !$ACC PRESENT(ddzu, ddzw, drho_air, rho_air_zw) &
        !$ACC PRESENT(surf_def, surf_lsm, surf_top, surf_usm) &
        !$ACC PRESENT(tend) &
-       !$ACC PRESENT(surf_u, surf_u%southward, surf_u%northward, surf_u%downward, surf_u%upward) &
-       !$ACC PRESENT(surf_u%start_index, surf_u%end_index, surf_u%k, surf_u%usvs, surf_u%usws) &
+       !$ACC PRESENT(surf_u) &
+       !$ACC NO_CREATE(surf_u%southward, surf_u%northward, surf_u%downward, surf_u%upward) &
+       !$ACC NO_CREATE(surf_u%start_index, surf_u%end_index, surf_u%k, surf_u%usvs, surf_u%usws) &
        !$ACC IF(enable_openacc)
        DO  i = nxlu, nxr
           DO  j = nys, nyn

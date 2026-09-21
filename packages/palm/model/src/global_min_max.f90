@@ -85,6 +85,7 @@
 #if defined( _OPENACC )
     INTEGER(iwp) ::  count_eq   !< counter for locations of maximum
     REAL(wp)     ::  red        !< scalar for reduction with OpenACC
+    REAL(wp)     ::  red_for_position  !< separate capture of the completed reduction result
 #endif
 
 
@@ -187,17 +188,16 @@
 
 !
 !--    Determine the maximum's position and count how often it is found.
+!--    DTK flang requires a separate symbol when a later kernel reads the reduction result.
+       red_for_position = red
        count_eq = 0
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
-       !$ACC PRESENT(ar) COPY(fmax_ijk_l(1:3), count_eq) &
+       !$ACC PRESENT(ar) COPY(count_eq) &
        !$ACC REDUCTION(+:count_eq) IF(enable_openacc)
        DO  k = k1, k2
           DO  j = j1, j2
              DO  i = i1, i2
-                IF ( ABS( ar(i,j,k) ) == red )  THEN
-                   fmax_ijk_l(1) = i
-                   fmax_ijk_l(2) = j
-                   fmax_ijk_l(3) = k
+                IF ( ABS( ar(i,j,k) ) == red_for_position )  THEN
                    count_eq = count_eq + 1
                 ENDIF
              ENDDO
@@ -205,6 +205,21 @@
        ENDDO
 
        IF ( count_eq == 1 ) THEN
+!
+!--       Only one matching element may write the shared coordinates.
+          !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
+          !$ACC PRESENT(ar) COPYOUT(fmax_ijk_l) IF(enable_openacc)
+          DO  k = k1, k2
+             DO  j = j1, j2
+                DO  i = i1, i2
+                   IF ( ABS( ar(i,j,k) ) == red_for_position )  THEN
+                      fmax_ijk_l(1) = i
+                      fmax_ijk_l(2) = j
+                      fmax_ijk_l(3) = k
+                   ENDIF
+                ENDDO
+             ENDDO
+          ENDDO
 !
 !--       We found a single maximum element and correctly got its position. Transfer its value to
 !--       handle the negative case correctly.

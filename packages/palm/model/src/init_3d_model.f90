@@ -1494,7 +1494,7 @@
 !$ACC COPY(p_loc(nzb:nzt+1,nys-1:nyn+1,nxl-1:nxr+1)) &
 !$ACC COPY(w(nzb:nzt+1,nysg:nyng,nxlg:nxrg)) &
 !$ACC COPY(p(nzb:nzt+1,nysg:nyng,nxlg:nxrg)) &
-!$ACC COPYIN(rho_air(nzb:nzt+1), drho_air(nzb:nzt+1), rho_air_zw(nzb:nzt+1)) &
+!$ACC COPYIN(rho_air, drho_air(nzb:nzt+1), rho_air_zw) &
 !$ACC COPYIN(ddzu(1:nzt+1), ddzw(1:nzt+1)) &
 !$ACC COPYIN(ngp_2dh_wgrid(nzb+1:nzt)) &
 !$ACC COPYIN(topo_flags(nzb:nzt+1,nysg:nyng,nxlg:nxrg)) IF(enable_openacc)

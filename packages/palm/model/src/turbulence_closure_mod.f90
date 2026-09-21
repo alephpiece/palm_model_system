@@ -381,7 +381,7 @@
        IF ( ocean_mode )  e_p(nzb,:,:) = e_p(nzb+1,:,:)
 !
 !--    Set Neumann boundary condition for TKE at model top. Do this also in case of a nested run.
-       !$ACC KERNELS PRESENT(diss_p,e_p) IF(enable_openacc)
+       !$ACC KERNELS PRESENT(e_p) NO_CREATE(diss_p) IF(enable_openacc)
        e_p(nzt+1,:,:) = e_p(nzt,:,:)
        IF ( rans_tke_e )  diss_p(nzt+1,:,:) = diss_p(nzt,:,:)
        !$ACC END KERNELS
@@ -3101,12 +3101,17 @@
        ELSE ! Or IF ( humidity )  THEN
 
           !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(2) &
-          !$ACC PRESENT(dd2zu, diss, drho_air_zw, d_exner, e, exner, kh, pt, q, ql) &
-          !$ACC PRESENT(surf_def, surf_def%downward, surf_def%end_index, surf_def%k, surf_def%qsws) &
-          !$ACC PRESENT(surf_def%shf, surf_def%start_index, surf_def%upward, surf_lsm, surf_lsm%downward) &
-          !$ACC PRESENT(surf_lsm%end_index, surf_lsm%k, surf_lsm%qsws_agg, surf_lsm%shf_agg) &
-          !$ACC PRESENT(surf_lsm%start_index, surf_lsm%upward, surf_top, surf_usm, surf_usm%end_index) &
-          !$ACC PRESENT(surf_usm%k, surf_usm%start_index, surf_usm%upward, tend, topo_flags, vpt) &
+          !$ACC PRESENT(dd2zu, diss, drho_air_zw, d_exner, e, exner, kh, pt, q) &
+          !$ACC NO_CREATE(ql) &
+          !$ACC PRESENT(surf_def) &
+          !$ACC NO_CREATE(surf_def%downward, surf_def%end_index, surf_def%k, surf_def%qsws) &
+          !$ACC PRESENT(surf_lsm) &
+          !$ACC NO_CREATE(surf_def%shf, surf_def%start_index, surf_def%upward, surf_lsm%downward) &
+          !$ACC NO_CREATE(surf_lsm%end_index, surf_lsm%k, surf_lsm%qsws_agg, surf_lsm%shf_agg) &
+          !$ACC PRESENT(surf_top, surf_usm) &
+          !$ACC NO_CREATE(surf_lsm%start_index, surf_lsm%upward, surf_usm%end_index) &
+          !$ACC PRESENT(tend, topo_flags, vpt) &
+          !$ACC NO_CREATE(surf_usm%k, surf_usm%start_index, surf_usm%upward) &
           !$ACC PRIVATE(tmp_flux_h, surf_s, surf_e) &
           !$ACC IF(enable_openacc)
           DO  i = nxl, nxr
