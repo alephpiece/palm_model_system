@@ -1537,6 +1537,7 @@
                    ELSE
 !
 !--                   Just store the respective section on the local array
+#if defined( _OPENACC )
                       IF ( enable_openacc )  THEN
                          !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i, j) &
                          !$ACC DEFAULT(PRESENT) IF(enable_openacc)
@@ -1547,8 +1548,11 @@
                          ENDDO
                          !$ACC END PARALLEL LOOP
                       ELSE
+#endif
                          local_2d = local_pf(:,:,layer_xy)
+#if defined( _OPENACC )
                       ENDIF
+#endif
 
                    ENDIF
 
@@ -1766,6 +1770,7 @@
 !--                   available on this PE!)
                       IF ( section(is,s_ind) >= nys  .AND.  section(is,s_ind) <= nyn )  THEN
                          j = section(is,s_ind)
+#if defined( _OPENACC )
                          IF ( enable_openacc )  THEN
                             !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i, k) &
                             !$ACC DEFAULT(PRESENT) IF(enable_openacc)
@@ -1776,8 +1781,11 @@
                             ENDDO
                             !$ACC END PARALLEL LOOP
                          ELSE
+#endif
                             local_2d = local_pf(:,j,nzb_do:nzt_do)
+#if defined( _OPENACC )
                          ENDIF
+#endif
                       ENDIF
 
                    ENDIF
@@ -1994,6 +2002,7 @@
 !--                   available on this PE!)
                       IF ( section(is,s_ind) >= nxl  .AND.  section(is,s_ind) <= nxr )  THEN
                          i = section(is,s_ind)
+#if defined( _OPENACC )
                          IF ( enable_openacc )  THEN
                             !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(j, k) &
                             !$ACC DEFAULT(PRESENT) IF(enable_openacc)
@@ -2004,8 +2013,11 @@
                             ENDDO
                             !$ACC END PARALLEL LOOP
                          ELSE
+#endif
                             local_2d = local_pf(i,:,nzb_do:nzt_do)
+#if defined( _OPENACC )
                          ENDIF
+#endif
                       ENDIF
 
                    ENDIF
