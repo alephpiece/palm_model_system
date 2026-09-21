@@ -2111,8 +2111,8 @@
 !-- Calculate new roughness lengths (for water surfaces only)
     IF ( .NOT. constant_roughness )  CALL calc_z0_water_surface
 
-    DEALLOCATE( e_s, f1, f2, f3 )
     !$ACC END DATA
+    DEALLOCATE( e_s, f1, f2, f3 )
 
     IF ( debug_output_timestep )  THEN
        WRITE( debug_string, * ) 'lsm_surface_energy_balance'
@@ -2136,7 +2136,7 @@
 
 
        !$OMP PARALLEL DO PRIVATE (m, i, j, k, i_off, j_off, k_off, e_s, q_s, resistance) SCHEDULE (STATIC)
-       !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(enable_openacc)
+       !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) COPYIN(ql) IF(enable_openacc)
        DO  m = 1, surf_lsm%ns
 
           i = surf_lsm%i(m)
@@ -3965,9 +3965,9 @@
 !
 !-- Copy LSM data.
 !$ACC ENTER DATA &
-!$ACC COPYIN(ddz_soil(nzb_soil:nzt_soil+1)) &
-!$ACC COPYIN(ddz_soil_center(nzb_soil:nzt_soil)) &
-!$ACC COPYIN(dz_soil(nzb_soil:nzt_soil)) &
+!$ACC COPYIN(ddz_soil) &
+!$ACC COPYIN(ddz_soil_center) &
+!$ACC COPYIN(dz_soil) &
 !$ACC COPYIN(m_liq) &
 !$ACC COPYIN(m_liq%var_1d(1:surf_lsm%ns)) &
 !$ACC COPYIN(m_liq_p) &
@@ -3976,7 +3976,7 @@
 !$ACC COPYIN(m_soil%var_2d(nzb_soil:nzt_soil,1:surf_lsm%ns)) &
 !$ACC COPYIN(m_soil_p) &
 !$ACC COPYIN(m_soil_p%var_2d(nzb_soil:nzt_soil,1:surf_lsm%ns)) &
-!$ACC COPYIN(root_extr(nzb_soil:nzt_soil)) &
+!$ACC COPYIN(root_extr) &
 !$ACC COPYIN(tm_liq_m) &
 !$ACC COPYIN(tm_liq_m%var_1d(1:surf_lsm%ns)) &
 !$ACC COPYIN(tm_soil_m) &
@@ -4309,7 +4309,7 @@ END SUBROUTINE lsm_recompute_outgoing_radiation
 !
 !--    Prognostic equation for soil temperature t_soil
        !$ACC KERNELS DEFAULT(PRESENT) IF(enable_openacc)
-       tend = 0.0_wp
+       tend(:,:) = 0.0_wp
        !$ACC END KERNELS
 
 
@@ -4484,7 +4484,7 @@ END SUBROUTINE lsm_recompute_outgoing_radiation
           !$ACC END PARALLEL LOOP
 
           !$ACC KERNELS DEFAULT(PRESENT) IF(enable_openacc)
-          m_total = 0.0_wp
+          m_total(:) = 0.0_wp
           !$ACC END KERNELS
 
           !$OMP PARALLEL DO PRIVATE (m, k) SCHEDULE (STATIC)
@@ -4533,7 +4533,7 @@ END SUBROUTINE lsm_recompute_outgoing_radiation
 !
 !--       Prognostic term for soil water content m_soil.
           !$ACC KERNELS DEFAULT(PRESENT) IF(enable_openacc)
-          tend = 0.0_wp
+          tend(:,:) = 0.0_wp
           !$ACC END KERNELS
 
           !$OMP PARALLEL DO PRIVATE (m, k) SCHEDULE (STATIC)

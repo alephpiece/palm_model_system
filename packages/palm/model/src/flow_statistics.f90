@@ -777,11 +777,12 @@
                    !$ACC ATOMIC UPDATE
                    sums_l(nzb+3,pr_palm,tn) = sums_l(nzb+3,pr_palm,tn) + surf_lsm%ts(m) *          &
                                                                          rmask(j,i,sr)
-#if ! defined( _OPENACC )
                    IF ( humidity )  THEN
+                      !$ACC ATOMIC UPDATE
                       sums_l(nzb+12,pr_palm,tn) = sums_l(nzb+12,pr_palm,tn) + surf_lsm%qs(m) *     &
                                                                               rmask(j,i,sr)
                    ENDIF
+#if ! defined( _OPENACC )
                    IF ( passive_scalar )  THEN
                       sums_l(nzb+13,pr_palm,tn) = sums_l(nzb+13,pr_palm,tn) + surf_lsm%ss(m) *     &
                                                                               rmask(j,i,sr)
@@ -1085,15 +1086,18 @@
                       sums_l(k,58,tn) = sums_l(k,58,tn) + 0.0_wp * rmask(j,i,sr)                    ! u"pt"
                       sums_l(k,61,tn) = sums_l(k,61,tn) + 0.0_wp * rmask(j,i,sr)                    ! v"pt"
 
+                      IF ( humidity )  THEN
+                         !$ACC ATOMIC UPDATE
+                         sums_l(k,48,tn) = sums_l(k,48,tn) +                                       &
+                                           waterflux_output_conversion(k) *                        &
+                                           surf_lsm%qsws_agg(m) * rmask(j,i,sr)  ! w"q" (w"qv")
+                      ENDIF
 #if ! defined( _OPENACC )
                       IF ( ocean_mode )  THEN
                          sums_l(k,65,tn) = sums_l(k,65,tn) + surf_lsm%sasws(m) *                   &
                                            scalarflux_output_conversion(k) * rmask(j,i,sr)  ! w"sa"
                       ENDIF
                       IF ( humidity )  THEN
-                         sums_l(k,48,tn) = sums_l(k,48,tn) +                                       &
-                                           waterflux_output_conversion(k) *                        &
-                                           surf_lsm%qsws_agg(m) * rmask(j,i,sr)  ! w"q" (w"qv")
                          sums_l(k,45,tn) = sums_l(k,45,tn) +  (                                    &
                                            ( 1.0_wp + 0.61_wp * q(k,j,i) ) *                       &
                                            surf_lsm%shf_agg(m) + 0.61_wp * pt(k,j,i) *             &
@@ -1187,13 +1191,37 @@
                    ENDIF
                 ENDDO
              ENDIF
-#if ! defined( _OPENACC )
              IF ( .NOT. neutral )  THEN
                 DO  m = surf_lsm%start_index(j,i), surf_lsm%end_index(j,i)
                    IF ( surf_lsm%upward(m) )  THEN
+                      !$ACC ATOMIC UPDATE
                       sums_l(nzb,112,tn) = sums_l(nzb,112,tn) + surf_lsm%ol(m) * rmask(j,i,sr) ! L
                    ENDIF
                 ENDDO
+             ENDIF
+             IF ( radiation )  THEN
+                DO  m = surf_lsm%start_index(j,i), surf_lsm%end_index(j,i)
+                   IF ( surf_lsm%upward(m) )  THEN
+                      !$ACC ATOMIC UPDATE
+                      sums_l(nzb,99,tn)  = sums_l(nzb,99,tn)   +                                   &
+                                           surf_lsm%rad_net(m)    * rmask(j,i,sr)
+                      !$ACC ATOMIC UPDATE
+                      sums_l(nzb,100,tn) = sums_l(nzb,100,tn)  +                                   &
+                                           surf_lsm%rad_lw_in(m)  * rmask(j,i,sr)
+                      !$ACC ATOMIC UPDATE
+                      sums_l(nzb,101,tn) = sums_l(nzb,101,tn)  +                                   &
+                                           surf_lsm%rad_lw_out(m) * rmask(j,i,sr)
+                      !$ACC ATOMIC UPDATE
+                      sums_l(nzb,102,tn) = sums_l(nzb,102,tn)  +                                   &
+                                           surf_lsm%rad_sw_in(m)  * rmask(j,i,sr)
+                      !$ACC ATOMIC UPDATE
+                      sums_l(nzb,103,tn) = sums_l(nzb,103,tn)  +                                   &
+                                           surf_lsm%rad_sw_out(m) * rmask(j,i,sr)
+                   ENDIF
+                ENDDO
+             ENDIF
+#if ! defined( _OPENACC )
+             IF ( .NOT. neutral )  THEN
                 DO  m = surf_usm%start_index(j,i), surf_usm%end_index(j,i)
                    IF ( surf_usm%upward(m) )  THEN
                       sums_l(nzb,112,tn) = sums_l(nzb,112,tn) + surf_usm%ol(m) * rmask(j,i,sr) ! L
@@ -1202,21 +1230,6 @@
              ENDIF
 
              IF ( radiation )  THEN
-                DO  m = surf_lsm%start_index(j,i), surf_lsm%end_index(j,i)
-                   IF ( surf_lsm%upward(m) )  THEN
-                      sums_l(nzb,99,tn)  = sums_l(nzb,99,tn)   +                                   &
-                                           surf_lsm%rad_net(m)    * rmask(j,i,sr)
-                      sums_l(nzb,100,tn) = sums_l(nzb,100,tn)  +                                   &
-                                           surf_lsm%rad_lw_in(m)  * rmask(j,i,sr)
-                      sums_l(nzb,101,tn) = sums_l(nzb,101,tn)  +                                   &
-                                           surf_lsm%rad_lw_out(m) * rmask(j,i,sr)
-                      sums_l(nzb,102,tn) = sums_l(nzb,102,tn)  +                                   &
-                                           surf_lsm%rad_sw_in(m)  * rmask(j,i,sr)
-                      sums_l(nzb,103,tn) = sums_l(nzb,103,tn)  +                                   &
-                                           surf_lsm%rad_sw_out(m) * rmask(j,i,sr)
-                   ENDIF
-                ENDDO
-
                 DO  m = surf_usm%start_index(j,i), surf_usm%end_index(j,i)
                    IF ( surf_usm%upward(m) )  THEN
                       sums_l(nzb,99,tn)  = sums_l(nzb,99,tn)   +                                   &
@@ -1493,7 +1506,6 @@
        ENDDO
        !$OMP END PARALLEL
 
-       !$ACC UPDATE HOST(sums_l) IF(enable_openacc)
 !
 !--    Treat land-surface quantities according to new wall model structure. Count only
 !--    quantities from upward-facing surfaces for now.
@@ -1502,7 +1514,7 @@
           !$OMP PARALLEL PRIVATE( i, j, m, tn )
           !$ tn = omp_get_thread_num()
           !$OMP DO
-          !$ACC PARALLEL LOOP GANG VECTOR PRIVATE(i, j, m, tn) &
+          !$ACC PARALLEL LOOP GANG VECTOR PRIVATE(i, j, m) FIRSTPRIVATE(tn) &
           !$ACC DEFAULT(PRESENT) IF(enable_openacc)
           DO  m = 1, surf_lsm%ns
              IF ( surf_lsm%upward(m) )  THEN
@@ -1530,7 +1542,7 @@
           !$OMP PARALLEL PRIVATE( i, j, k, m, tn )
           !$ tn = omp_get_thread_num()
           !$OMP DO
-          !$ACC PARALLEL LOOP GANG VECTOR PRIVATE(i, j, k, m, tn) &
+          !$ACC PARALLEL LOOP GANG VECTOR PRIVATE(i, j, k, m) FIRSTPRIVATE(tn) &
           !$ACC DEFAULT(PRESENT) IF(enable_openacc)
           DO  m = 1, surf_lsm%ns
              IF ( surf_lsm%upward(m) )  THEN
@@ -1547,6 +1559,8 @@
           !$ACC END PARALLEL LOOP
           !$OMP END PARALLEL
        ENDIF
+!
+       !$ACC UPDATE HOST(sums_l) IF(enable_openacc)
 !
 !--    Treat urban-surface quantities according to new wall model structure. Here, ghf and r_a are
 !--    added on top of LSM sums.

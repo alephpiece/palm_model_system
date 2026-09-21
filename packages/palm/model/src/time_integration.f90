@@ -79,6 +79,7 @@
                biometeorology,                                                                     &
                call_psolver_at_all_substeps,                                                       &
                child_domain,                                                                       &
+               cloud_droplets,                                                                     &
                constant_flux_layer,                                                                &
                constant_heatflux,                                                                  &
                create_disturbances,                                                                &
@@ -304,6 +305,7 @@
                radiation_control,                                                                  &
                radiation_interaction,                                                              &
                radiation_interactions,                                                             &
+               radiation_scheme,                                                                   &
                radiation_start_time,                                                               &
                time_radiation
 
@@ -598,7 +600,7 @@
 !
 !-- Copy data from control_parameters
 !$ACC DATA &
-!$ACC COPYIN(tsc(1:5)) IF(enable_openacc)
+!$ACC COPYIN(tsc) IF(enable_openacc)
 
 !
 !-- Copy data from grid_variables
@@ -1170,6 +1172,14 @@
              time_since_reference_point = time_since_reference_point -                             &
                                           MODULO(time_since_reference_point, dt_radiation)
 
+!
+!--          Exchange inputs and results for the host clear-sky radiation calculation.
+             IF ( land_surface .AND. radiation_scheme == 'clear-sky' )  THEN
+                !$ACC UPDATE HOST(pt, surf_lsm%pt_surface) IF(enable_openacc)
+                IF ( bulk_cloud_model .OR. cloud_droplets )  THEN
+                   !$ACC UPDATE HOST(ql) IF(enable_openacc)
+                ENDIF
+             ENDIF
              CALL radiation_control
 
              IF ( ( urban_surface  .OR.  land_surface )  .AND.  radiation_interactions )  THEN
@@ -1178,6 +1188,12 @@
                 CALL cpu_log( log_point_s(46), 'radiation_interaction', 'stop' )
              ENDIF
 
+!
+             IF ( land_surface .AND. radiation_scheme == 'clear-sky' )  THEN
+                !$ACC UPDATE DEVICE(surf_lsm%rad_net, surf_lsm%rad_lw_in, surf_lsm%rad_lw_out) &
+                !$ACC DEVICE(surf_lsm%rad_sw_in, surf_lsm%rad_sw_out, surf_lsm%rad_lw_out_change_0) &
+                !$ACC IF(enable_openacc)
+             ENDIF
 !
 !--          Return the current time to its original value
              time_since_reference_point = time_since_reference_point_save

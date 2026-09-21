@@ -1170,7 +1170,7 @@
 !-- Evaluate bulk Richardson number.
     !$OMP PARALLEL DO
     !$ACC PARALLEL LOOP &
-    !$ACC PRESENT(ns, pt1, pt_surface, rib, uvw_abs, z_mo) IF(enable_openacc)
+    !$ACC FIRSTPRIVATE(ns) PRESENT(pt1, pt_surface, rib, uvw_abs, z_mo) IF(enable_openacc)
     DO  m = 1, ns
        rib(m) = g * z_mo(m) * ( pt1(m) - pt_surface(m) ) / ( uvw_abs(m)**2 * pt1(m) + 1.0E-20_wp )
     ENDDO
