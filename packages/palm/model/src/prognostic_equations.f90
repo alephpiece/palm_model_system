@@ -906,7 +906,7 @@
     !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
     !$ACC PRESENT(u, tend, tu_m, u_init, rdf, topo_flags, odf_x, odf_y) &
     !$ACC PRESENT(tsc(2:5)) &
-    !$ACC PRESENT(u_p) DEFAULT(NONE) IF(enable_openacc)
+    !$ACC PRESENT(u_p) IF(enable_openacc)
     DO  i = nxlu, nxr
        DO  j = nys, nyn
 !
@@ -948,7 +948,7 @@
     IF ( timestep_scheme(1:5) == 'runge' )  THEN
        IF ( intermediate_timestep_count == 1 )  THEN
           !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
-          !$ACC PRESENT(tend, tu_m) DEFAULT(NONE) IF(enable_openacc)
+          !$ACC PRESENT(tend, tu_m) IF(enable_openacc)
           DO  i = nxlu, nxr
              DO  j = nys, nyn
                 DO  k = nzb+1, nzt
@@ -975,7 +975,7 @@
 !-- v-velocity component
     CALL cpu_log( log_point(6), 'v-equation', 'start' )
 
-    !$ACC KERNELS PRESENT(tend) DEFAULT(NONE) IF(enable_openacc)
+    !$ACC KERNELS PRESENT(tend) IF(enable_openacc)
     tend = 0.0_wp
     !$ACC END KERNELS
     IF ( timestep_scheme(1:5) == 'runge' )  THEN
@@ -1025,7 +1025,7 @@
     !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
     !$ACC PRESENT(v, tend, tv_m, v_init, rdf, topo_flags, odf_x, odf_y) &
     !$ACC PRESENT(tsc(2:5)) &
-    !$ACC PRESENT(v_p) DEFAULT(NONE) IF(enable_openacc)
+    !$ACC PRESENT(v_p) IF(enable_openacc)
     DO  i = nxl, nxr
        DO  j = nysv, nyn
 !
@@ -1067,7 +1067,7 @@
     IF ( timestep_scheme(1:5) == 'runge' )  THEN
        IF ( intermediate_timestep_count == 1 )  THEN
           !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
-          !$ACC PRESENT(tend, tv_m) DEFAULT(NONE) IF(enable_openacc)
+          !$ACC PRESENT(tend, tv_m) IF(enable_openacc)
           DO  i = nxl, nxr
              DO  j = nysv, nyn
                 DO  k = nzb+1, nzt
@@ -1094,7 +1094,7 @@
 !-- w-velocity component
     CALL cpu_log( log_point(7), 'w-equation', 'start' )
 
-    !$ACC KERNELS PRESENT(tend) DEFAULT(NONE) IF(enable_openacc)
+    !$ACC KERNELS PRESENT(tend) IF(enable_openacc)
     tend = 0.0_wp
     !$ACC END KERNELS
     IF ( timestep_scheme(1:5) == 'runge' )  THEN
@@ -1140,7 +1140,7 @@
     !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
     !$ACC PRESENT(w, tend, tw_m, v_init, rdf, topo_flags, odf_x, odf_y) &
     !$ACC PRESENT(tsc(2:5)) &
-    !$ACC PRESENT(w_p) DEFAULT(NONE) IF(enable_openacc)
+    !$ACC PRESENT(w_p) IF(enable_openacc)
     DO  i = nxl, nxr
        DO  j = nys, nyn
 !
@@ -1159,7 +1159,7 @@
     IF ( timestep_scheme(1:5) == 'runge' )  THEN
        IF ( intermediate_timestep_count == 1 )  THEN
           !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
-          !$ACC PRESENT(tend, tw_m) DEFAULT(NONE) IF(enable_openacc)
+          !$ACC PRESENT(tend, tw_m) IF(enable_openacc)
           DO  i = nxl, nxr
              DO  j = nys, nyn
                 DO  k = nzb+1, nzt-1
@@ -1207,7 +1207,7 @@
 !
 !--    pt-tendency terms with no communication
        IF ( scalar_advec /= 'bc-scheme' )  THEN
-          !$ACC KERNELS PRESENT(tend) DEFAULT(NONE) IF(enable_openacc)
+          !$ACC KERNELS PRESENT(tend) IF(enable_openacc)
           tend = 0.0_wp
           !$ACC END KERNELS
           IF ( timestep_scheme(1:5) == 'runge' )  THEN
@@ -1277,7 +1277,7 @@
        !$ACC PRESENT(pt, tend, tpt_m, topo_flags) &
        !$ACC PRESENT(pt_init, rdf_sc, ptdf_x, ptdf_y, odf_x, odf_y) &
        !$ACC PRESENT(tsc(3:5)) &
-       !$ACC PRESENT(pt_p) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(pt_p) IF(enable_openacc)
        DO  i = nxl, nxr
           DO  j = nys, nyn
 !
@@ -1297,7 +1297,7 @@
        IF ( timestep_scheme(1:5) == 'runge' )  THEN
           IF ( intermediate_timestep_count == 1 )  THEN
              !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
-             !$ACC PRESENT(tend, tpt_m) DEFAULT(NONE) IF(enable_openacc)
+             !$ACC PRESENT(tend, tpt_m) IF(enable_openacc)
              DO  i = nxl, nxr
                 DO  j = nys, nyn
                    DO  k = nzb+1, nzt
@@ -1406,7 +1406,7 @@
 !--    Prognostic equation for total water content
        !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(2) &
        !$ACC PRESENT(q, q_init, q_p, rdf_sc, tend, topo_flags, tq_m, tsc(3:5)) &
-       !$ACC DEFAULT(NONE) IF(enable_openacc)
+       !$ACC IF(enable_openacc)
        DO  i = nxl, nxr
           DO  j = nys, nyn
 !
@@ -1428,7 +1428,7 @@
           IF ( intermediate_timestep_count == 1 )  THEN
              !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) &
              !$ACC PRESENT(tend, tq_m) &
-             !$ACC DEFAULT(NONE) IF(enable_openacc)
+             !$ACC IF(enable_openacc)
              DO  i = nxl, nxr
                 DO  j = nys, nyn
                    DO  k = nzb+1, nzt
@@ -1440,7 +1440,7 @@
           ELSEIF ( intermediate_timestep_count < intermediate_timestep_count_max )  THEN
              !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) &
              !$ACC PRESENT(tend, tq_m) &
-             !$ACC DEFAULT(NONE) IF(enable_openacc)
+             !$ACC IF(enable_openacc)
              DO  i = nxl, nxr
                 DO  j = nys, nyn
                    DO  k = nzb+1, nzt

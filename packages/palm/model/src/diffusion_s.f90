@@ -120,7 +120,7 @@
        !$ACC PRESENT(ddzu, ddzw, drho_air, dzw, rho_air_zw) &
        !$ACC PRESENT(surf_def, surf_lsm, surf_top, surf_usm) &
        !$ACC PRESENT(s_flux_def, s_flux_t, s_flux_lsm, s_flux_usm) &
-       !$ACC PRESENT(tend) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(tend) IF(enable_openacc)
        DO  i = nxl, nxr
           DO  j = nys, nyn
 !

@@ -126,7 +126,7 @@
        !$ACC PRESENT(tend) &
        !$ACC PRESENT(surf_u, surf_u%southward, surf_u%northward, surf_u%downward, surf_u%upward) &
        !$ACC PRESENT(surf_u%start_index, surf_u%end_index, surf_u%k, surf_u%usvs, surf_u%usws) &
-       !$ACC DEFAULT(NONE) IF(enable_openacc)
+       !$ACC IF(enable_openacc)
        DO  i = nxlu, nxr
           DO  j = nys, nyn
 !

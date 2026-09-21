@@ -407,7 +407,6 @@
                 ENDDO
              ENDDO
           ENDDO
-          !$ACC END PARALLEL
 
           IF ( bulk_cloud_model )  THEN
              !$OMP DO

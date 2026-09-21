@@ -821,6 +821,8 @@
 
     LOGICAL, SAVE ::  rh_valid = .TRUE.
 
+    LOGICAL ::  rh_valid_l !< local reduction variable to avoid DTK 26.04 host IR failure in this routine
+
     REAL(wp) ::  e_s !< saturation water vapor pressure
     REAL(wp) ::  q_s !< saturation mixing ratio
 
@@ -847,7 +849,8 @@
 !--       in the surface temperature resulting in numerical instabilities.
 !--       Too high relative humidities may occur if no cloud water condensation is considered.
           IF ( humidity  .AND.  .NOT. neutral  .AND.  check_realistic_q  .AND.  rh_valid )  THEN
-             !$ACC PARALLEL LOOP GANG REDUCTION(.or.: rh_valid) &
+             rh_valid_l = rh_valid
+             !$ACC PARALLEL LOOP GANG REDUCTION(.or.: rh_valid_l) &
              !$ACC PRIVATE(e_s, q_s) &
              !$ACC DEFAULT(PRESENT) IF(enable_openacc)
              DO  i = nxl, nxr
@@ -859,12 +862,13 @@
                       e_s = magnus( exner(k) * pt(k,j,i) )
                       q_s = rd_d_rv * e_s / ( hyp(k) - e_s )
 
-                      IF ( q(k,j,i) > 1.02_wp * q_s )  rh_valid = .FALSE.
+                      IF ( q(k,j,i) > 1.02_wp * q_s )  rh_valid_l = .FALSE.
 
                    ENDDO
                 ENDDO
              ENDDO
              !$ACC END PARALLEL LOOP
+             rh_valid = rh_valid_l
 !
 !--          Since the check is performed locally, merge the logical flag from all mpi ranks.
 #if defined( __parallel )
@@ -1096,7 +1100,7 @@
 !-- Is this really necessary?
     !$OMP PARALLEL DO PRIVATE( i, j, k )
     !$ACC PARALLEL LOOP PRIVATE(i, j, k) &
-    !$ACC PRESENT(bc_hv, w_p) DEFAULT(NONE) IF(enable_openacc)
+    !$ACC PRESENT(bc_hv, w_p) IF(enable_openacc)
     DO  m = 1, bc_hv%ns
        i = bc_hv%i(m)
        j = bc_hv%j(m)
@@ -1106,7 +1110,7 @@
 !
 !-- Top boundary. A nested domain ( ibc_uv_t = 3 ) does not require settings.
     IF ( ibc_uv_t == 0 )  THEN
-        !$ACC KERNELS PRESENT(u_p, v_p, u_init, v_init) DEFAULT(NONE) IF(enable_openacc)
+        !$ACC KERNELS PRESENT(u_p, v_p, u_init, v_init) IF(enable_openacc)
         u_p(nzt+1,:,:) = u_init(nzt+1)
         v_p(nzt+1,:,:) = v_init(nzt+1)
         !$ACC END KERNELS
@@ -1118,7 +1122,7 @@
 !-- Vertical velocity is zero at the model top, but maybe non-zero in child domains and
 !-- in case of offline nesting.
     IF ( .NOT. child_domain  .AND.  .NOT. nesting_offline )  THEN
-       !$ACC KERNELS PRESENT(w_p) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC KERNELS PRESENT(w_p) IF(enable_openacc)
        w_p(nzt:nzt+1,:,:) = 0.0_wp  !< nzt is not a prognostic level (but cf. pres)
        !$ACC END KERNELS
     ENDIF

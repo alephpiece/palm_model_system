@@ -210,7 +210,7 @@
           !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i,j,k) &
           !$ACC COPY(dt_u_l, dt_v_l, dt_w_l, u_stokes_zu, v_stokes_zu) &
           !$ACC REDUCTION(MIN: dt_u_l, dt_v_l, dt_w_l) &
-          !$ACC PRESENT(u, v, w, dzu) DEFAULT(NONE) IF(enable_openacc)
+          !$ACC PRESENT(u, v, w, dzu) IF(enable_openacc)
           !$OMP PARALLEL DO PRIVATE(i,j,k) &
           !$OMP REDUCTION(MIN: dt_u_l, dt_v_l, dt_w_l)
           DO  i = nxl, nxr
@@ -274,7 +274,7 @@
 !--    subgrid model, negative km are possible.
        dt_diff_l = 999999.0_wp
 
-       !$ACC PARALLEL LOOP PRESENT(dxyz2_min, dzw) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PARALLEL LOOP PRESENT(dxyz2_min, dzw) IF(enable_openacc)
        DO  k = nzb+1, nzt
            dxyz2_min(k) = MIN( dx2, dy2, dzw(k) * dzw(k) ) * 0.125_wp
        ENDDO
@@ -282,7 +282,7 @@
        !$OMP PARALLEL DO private(i,j,k) reduction(MIN: dt_diff_l)
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i,j,k) &
        !$ACC COPY(dt_diff_l) REDUCTION(MIN: dt_diff_l) &
-       !$ACC PRESENT(dxyz2_min, kh, km) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(dxyz2_min, kh, km) IF(enable_openacc)
        DO  i = nxl, nxr
           DO  j = nys, nyn
              DO  k = nzb+1, nzt

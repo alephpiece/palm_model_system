@@ -334,7 +334,7 @@
        IF ( .NOT. rans_mode )  THEN
           !$OMP PARALLEL DO PRIVATE( i, j, k )
           !$ACC PARALLEL LOOP PRIVATE(i, j, k) &
-          !$ACC PRESENT(bc_hv, e_p) DEFAULT(NONE) IF(enable_openacc)
+          !$ACC PRESENT(bc_hv, e_p) IF(enable_openacc)
           DO  m = 1, bc_hv%ns
              i = bc_hv%i(m)
              j = bc_hv%j(m)
@@ -381,7 +381,7 @@
        IF ( ocean_mode )  e_p(nzb,:,:) = e_p(nzb+1,:,:)
 !
 !--    Set Neumann boundary condition for TKE at model top. Do this also in case of a nested run.
-       !$ACC KERNELS PRESENT(diss_p,e_p) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC KERNELS PRESENT(diss_p,e_p) IF(enable_openacc)
        e_p(nzt+1,:,:) = e_p(nzt,:,:)
        IF ( rans_tke_e )  diss_p(nzt+1,:,:) = diss_p(nzt,:,:)
        !$ACC END KERNELS
@@ -1917,19 +1917,19 @@
 !--    phi_m is used within the MERGE construct.
        !$OMP PARALLEL DO PRIVATE(m)
        !$ACC PARALLEL LOOP PRIVATE(m) &
-       !$ACC PRESENT(surf_def) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(surf_def) IF(enable_openacc)
        DO  m = 1, surf_def%ns
           phi_m_def(m) = phi_m( surf_def%z_mo(m) / surf_def%ol(m) )
        ENDDO
        !$OMP PARALLEL DO PRIVATE(m)
        !$ACC PARALLEL LOOP PRIVATE(m) &
-       !$ACC PRESENT(surf_lsm) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(surf_lsm) IF(enable_openacc)
        DO  m = 1, surf_lsm%ns
           phi_m_lsm(m) = phi_m( surf_lsm%z_mo(m) / surf_lsm%ol(m) )
        ENDDO
        !$OMP PARALLEL DO PRIVATE(m)
        !$ACC PARALLEL LOOP PRIVATE(m) &
-       !$ACC PRESENT(surf_usm) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(surf_usm) IF(enable_openacc)
        DO  m = 1, surf_usm%ns
           phi_m_usm(m) = phi_m( surf_usm%z_mo(m) / surf_usm%ol(m) )
        ENDDO
@@ -1944,7 +1944,7 @@
 !--    Default surfaces.
        !$OMP PARALLEL DO PRIVATE(i, j, k, m, drho, km_sfc, koff, kref, flag)
        !$ACC PARALLEL LOOP PRIVATE(i, j, k, m, drho, km_sfc, koff, kref, flag) &
-       !$ACC PRESENT(surf_def, u, v, drho_air_zw, zu) PRESENT(km) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(surf_def, u, v, drho_air_zw, zu) PRESENT(km) IF(enable_openacc)
        DO  m = 1, surf_def%ns
 
           i = surf_def%i(m)
@@ -1991,7 +1991,7 @@
 !--    Natural surfaces.
        !$OMP PARALLEL DO PRIVATE(i, j, k, m, drho, km_sfc, koff, kref, flag)
        !$ACC PARALLEL LOOP PRIVATE(i, j, k, m, drho, km_sfc, koff, kref, flag) &
-       !$ACC PRESENT(surf_lsm, u, v, drho_air_zw, zu) PRESENT(km) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(surf_lsm, u, v, drho_air_zw, zu) PRESENT(km) IF(enable_openacc)
        DO  m = 1, surf_lsm%ns
 
           i = surf_lsm%i(m)
@@ -2037,7 +2037,7 @@
 !--    Urban surfaces
        !$OMP PARALLEL DO PRIVATE(i, j, k, m, drho, km_sfc, koff, kref, flag)
        !$ACC PARALLEL LOOP PRIVATE(i, j, k, m, drho, km_sfc, koff, kref, flag) &
-       !$ACC PRESENT(surf_usm, u, v, drho_air_zw, zu) PRESENT(km) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(surf_usm, u, v, drho_air_zw, zu) PRESENT(km) IF(enable_openacc)
        DO  m = 1, surf_usm%ns
 
           i = surf_usm%i(m)
@@ -2252,7 +2252,7 @@
              tend = 0.0_wp
              CALL advec_s_up( e )
           ELSE
-             !$ACC KERNELS PRESENT(tend) DEFAULT(NONE) IF(enable_openacc)
+             !$ACC KERNELS PRESENT(tend) IF(enable_openacc)
              tend = 0.0_wp
              !$ACC END KERNELS
              IF ( timestep_scheme(1:5) == 'runge' )  THEN
@@ -2305,7 +2305,7 @@
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
        !$ACC PRESENT(e, tend, te_m, topo_flags) &
        !$ACC PRESENT(tsc(3:3)) &
-       !$ACC PRESENT(e_p) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(e_p) IF(enable_openacc)
        DO  i = nxl, nxr
           DO  j = nys, nyn
              !Following directive is required to vectorize on Intel19
@@ -2323,7 +2323,7 @@
        IF ( timestep_scheme(1:5) == 'runge' )  THEN
           IF ( intermediate_timestep_count == 1 )  THEN
              !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
-             !$ACC PRESENT(tend, te_m) DEFAULT(NONE) IF(enable_openacc)
+             !$ACC PRESENT(tend, te_m) IF(enable_openacc)
              DO  i = nxl, nxr
                 DO  j = nys, nyn
                    DO  k = nzb+1, nzt
@@ -2673,6 +2673,9 @@
     REAL(wp), DIMENSION(nzb+1:nzt) ::  dwdy      !< Gradient of w-component in y-direction
     REAL(wp), DIMENSION(nzb+1:nzt) ::  dwdz      !< Gradient of w-component in z-direction
     REAL(wp), DIMENSION(nzb+1:nzt) ::  tmp_flux  !< temporary flux-array in z-direction
+!-- Give the humidity branch its own flux-array symbol: flang-1.5 confuses the bound arguments of
+!-- PRIVATE arrays that are privatized in more than one OpenACC region of a subroutine.
+    REAL(wp), DIMENSION(nzb+1:nzt) ::  tmp_flux_h !< temporary flux-array, humidity branch
 
 
 
@@ -2687,7 +2690,7 @@
     !$ACC PRESENT(surf_def) &
     !$ACC PRESENT(surf_lsm) &
     !$ACC PRESENT(surf_top) &
-    !$ACC PRESENT(surf_usm) DEFAULT(NONE) IF(enable_openacc)
+    !$ACC PRESENT(surf_usm) IF(enable_openacc)
     DO  i = nxl, nxr
        DO  j = nys, nyn
           !$ACC LOOP PRIVATE(k)
@@ -3005,7 +3008,7 @@
              !$ACC PRESENT(surf_def) &
              !$ACC PRESENT(surf_lsm) &
              !$ACC PRESENT(surf_top) &
-             !$ACC PRESENT(surf_usm) DEFAULT(NONE) IF(enable_openacc)
+             !$ACC PRESENT(surf_usm) IF(enable_openacc)
              DO  i = nxl, nxr
                 DO  j = nys, nyn
 
@@ -3104,8 +3107,8 @@
           !$ACC PRESENT(surf_lsm%end_index, surf_lsm%k, surf_lsm%qsws_agg, surf_lsm%shf_agg) &
           !$ACC PRESENT(surf_lsm%start_index, surf_lsm%upward, surf_top, surf_usm, surf_usm%end_index) &
           !$ACC PRESENT(surf_usm%k, surf_usm%start_index, surf_usm%upward, tend, topo_flags, vpt) &
-          !$ACC PRIVATE(tmp_flux, surf_s, surf_e) &
-          !$ACC DEFAULT(NONE) IF(enable_openacc)
+          !$ACC PRIVATE(tmp_flux_h, surf_s, surf_e) &
+          !$ACC IF(enable_openacc)
           DO  i = nxl, nxr
              DO  j = nys, nyn
 
@@ -3115,10 +3118,11 @@
                    IF ( .NOT. bulk_cloud_model .AND. .NOT. cloud_droplets )  THEN
                       k1 = 1.0_wp + 0.61_wp * q(k,j,i)
                       k2 = 0.61_wp * pt(k,j,i)
-                      tmp_flux(k) = -1.0_wp * kh(k,j,i) * ( k1 * ( pt(k+1,j,i) - pt(k-1,j,i) ) +   &
+                      tmp_flux_h(k) = -1.0_wp * kh(k,j,i) * ( k1 * ( pt(k+1,j,i) - pt(k-1,j,i) ) +   &
                                                             k2 * ( q(k+1,j,i)  - q(k-1,j,i) ) )    &
                                     * dd2zu(k)
-                   ELSEIF ( bulk_cloud_model )  THEN
+                   ELSE
+                   IF ( bulk_cloud_model )  THEN
                       IF ( ql(k,j,i) == 0.0_wp )  THEN
                          k1 = 1.0_wp + 0.61_wp * q(k,j,i)
                          k2 = 0.61_wp * pt(k,j,i)
@@ -3131,16 +3135,19 @@
                               ( q(k,j,i) - ql(k,j,i) ) / ( temp * temp ) )
                          k2 = theta * ( lv_d_cp / temp * k1 - 1.0_wp )
                       ENDIF
-                      tmp_flux(k) = -1.0_wp * kh(k,j,i) * ( k1 * ( pt(k+1,j,i) - pt(k-1,j,i) ) +   &
+                      tmp_flux_h(k) = -1.0_wp * kh(k,j,i) * ( k1 * ( pt(k+1,j,i) - pt(k-1,j,i) ) +   &
                                                             k2 * ( q(k+1,j,i)  - q(k-1,j,i) ) )    &
                                     * dd2zu(k)
-                   ELSEIF ( cloud_droplets )  THEN
+                   ELSE
+                   IF ( cloud_droplets )  THEN
                       k1 = 1.0_wp + 0.61_wp * q(k,j,i) - ql(k,j,i)
                       k2 = 0.61_wp * pt(k,j,i)
-                      tmp_flux(k) = -1.0_wp * kh(k,j,i) * ( k1 * ( pt(k+1,j,i) - pt(k-1,j,i) ) +   &
+                      tmp_flux_h(k) = -1.0_wp * kh(k,j,i) * ( k1 * ( pt(k+1,j,i) - pt(k-1,j,i) ) +   &
                                                             k2 * ( q(k+1,j,i)  - q(k-1,j,i) ) -    &
                                                             pt(k,j,i) * ( ql(k+1,j,i) -            &
                                                             ql(k-1,j,i) ) ) * dd2zu(k)
+                   ENDIF
+                   ENDIF
                    ENDIF
 
                 ENDDO
@@ -3159,7 +3166,8 @@
                       IF (  .NOT.  bulk_cloud_model  .AND.  .NOT.  cloud_droplets )  THEN
                          k1 = 1.0_wp + 0.61_wp * q(k,j,i)
                          k2 = 0.61_wp * pt(k,j,i)
-                      ELSEIF ( bulk_cloud_model )  THEN
+                      ELSE
+                      IF ( bulk_cloud_model )  THEN
                          IF ( ql(k,j,i) == 0.0_wp )  THEN
                             k1 = 1.0_wp + 0.61_wp * q(k,j,i)
                             k2 = 0.61_wp * pt(k,j,i)
@@ -3172,15 +3180,18 @@
                                  ( q(k,j,i) - ql(k,j,i) ) / ( temp * temp ) )
                             k2 = theta * ( lv_d_cp / temp * k1 - 1.0_wp )
                          ENDIF
-                      ELSEIF ( cloud_droplets )  THEN
+                      ELSE
+                      IF ( cloud_droplets )  THEN
                          k1 = 1.0_wp + 0.61_wp * q(k,j,i) - ql(k,j,i)
                          k2 = 0.61_wp * pt(k,j,i)
                       ENDIF
+                      ENDIF
+                      ENDIF
 !
 !--                   Overwrite vertical flux only at horizontal surfaces.
-                      tmp_flux(k) = MERGE( ( k1 * surf_def%shf(m) + k2 * surf_def%qsws(m) )        &
+                      tmp_flux_h(k) = MERGE( ( k1 * surf_def%shf(m) + k2 * surf_def%qsws(m) )        &
                                            * drho_air_zw(kref),                                    &
-                                           tmp_flux(k),                                            &
+                                           tmp_flux_h(k),                                            &
                                            surf_def%upward(m)  .OR.  surf_def%downward(m) )
                    ENDDO
                    !$ACC END LOOP
@@ -3197,7 +3208,8 @@
                       IF (  .NOT.  bulk_cloud_model  .AND.  .NOT.  cloud_droplets )  THEN
                          k1 = 1.0_wp + 0.61_wp * q(k,j,i)
                          k2 = 0.61_wp * pt(k,j,i)
-                      ELSEIF ( bulk_cloud_model )  THEN
+                      ELSE
+                      IF ( bulk_cloud_model )  THEN
                          IF ( ql(k,j,i) == 0.0_wp )  THEN
                             k1 = 1.0_wp + 0.61_wp * q(k,j,i)
                             k2 = 0.61_wp * pt(k,j,i)
@@ -3210,15 +3222,18 @@
                                  ( q(k,j,i) - ql(k,j,i) ) / ( temp * temp ) )
                             k2 = theta * ( lv_d_cp / temp * k1 - 1.0_wp )
                          ENDIF
-                      ELSEIF ( cloud_droplets )  THEN
+                      ELSE
+                      IF ( cloud_droplets )  THEN
                          k1 = 1.0_wp + 0.61_wp * q(k,j,i) - ql(k,j,i)
                          k2 = 0.61_wp * pt(k,j,i)
                       ENDIF
+                      ENDIF
+                      ENDIF
 !
 !--                   Overwrite vertical flux only at horizontal surfaces.
-                      tmp_flux(k) = MERGE( ( k1 * surf_lsm%shf_agg(m) + k2 * surf_lsm%qsws_agg(m) )&
+                      tmp_flux_h(k) = MERGE( ( k1 * surf_lsm%shf_agg(m) + k2 * surf_lsm%qsws_agg(m) )&
                                            * drho_air_zw(kref),                                    &
-                                           tmp_flux(k),                                            &
+                                           tmp_flux_h(k),                                            &
                                            surf_lsm%upward(m)  .OR.  surf_lsm%downward(m) )
                    ENDDO
                    !$ACC END LOOP
@@ -3236,7 +3251,8 @@
                       IF ( .NOT. bulk_cloud_model  .AND.  .NOT. cloud_droplets )  THEN
                          k1 = 1.0_wp + 0.61_wp * q(k,j,i)
                          k2 = 0.61_wp * pt(k,j,i)
-                      ELSEIF ( bulk_cloud_model )  THEN
+                      ELSE
+                      IF ( bulk_cloud_model )  THEN
                          IF ( ql(k,j,i) == 0.0_wp )  THEN
                             k1 = 1.0_wp + 0.61_wp * q(k,j,i)
                             k2 = 0.61_wp * pt(k,j,i)
@@ -3249,14 +3265,17 @@
                                  ( q(k,j,i) - ql(k,j,i) ) / ( temp * temp ) )
                             k2 = theta * ( lv_d_cp / temp * k1 - 1.0_wp )
                          ENDIF
-                      ELSEIF ( cloud_droplets )  THEN
+                      ELSE
+                      IF ( cloud_droplets )  THEN
                          k1 = 1.0_wp + 0.61_wp * q(k,j,i) - ql(k,j,i)
                          k2 = 0.61_wp * pt(k,j,i)
                       ENDIF
+                      ENDIF
+                      ENDIF
 !
 !--                   Overwrite vertical flux only at horizontal surfaces.
-                      tmp_flux(k) = MERGE( ( k1 * surf_usm%shf(m) + k2 * surf_usm%qsws(m) )        &
-                                           * drho_air_zw(kref), tmp_flux(k),                       &
+                      tmp_flux_h(k) = MERGE( ( k1 * surf_usm%shf(m) + k2 * surf_usm%qsws(m) )        &
+                                           * drho_air_zw(kref), tmp_flux_h(k),                       &
                                            surf_usm%upward(m)  .OR.  surf_usm%downward(m) )
                    ENDDO
                    !$ACC END LOOP
@@ -3273,7 +3292,8 @@
                       IF ( .NOT. bulk_cloud_model  .AND.  .NOT. cloud_droplets )  THEN
                          k1 = 1.0_wp + 0.61_wp * q(k,j,i)
                          k2 = 0.61_wp * pt(k,j,i)
-                      ELSEIF ( bulk_cloud_model )  THEN
+                      ELSE
+                      IF ( bulk_cloud_model )  THEN
                          IF ( ql(k,j,i) == 0.0_wp )  THEN
                             k1 = 1.0_wp + 0.61_wp * q(k,j,i)
                             k2 = 0.61_wp * pt(k,j,i)
@@ -3286,12 +3306,15 @@
                               ( q(k,j,i) - ql(k,j,i) ) / ( temp * temp ) )
                             k2 = theta * ( lv_d_cp / temp * k1 - 1.0_wp )
                          ENDIF
-                      ELSEIF ( cloud_droplets )  THEN
+                      ELSE
+                      IF ( cloud_droplets )  THEN
                          k1 = 1.0_wp + 0.61_wp * q(k,j,i) - ql(k,j,i)
                          k2 = 0.61_wp * pt(k,j,i)
                       ENDIF
+                      ENDIF
+                      ENDIF
 
-                      tmp_flux(k) = ( k1 * surf_top%shf(m) + k2 * surf_top%qsws(m) ) * drho_air_zw(k)
+                      tmp_flux_h(k) = ( k1 * surf_top%shf(m) + k2 * surf_top%qsws(m) ) * drho_air_zw(k)
 
                    ENDDO
 
@@ -3303,7 +3326,7 @@
                    !$ACC LOOP SEQ PRIVATE(k, flag)
                    DO  k = nzb+1, nzt
                       flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
-                      tend(k,j,i) = tend(k,j,i) + flag * tmp_flux(k) * ( g /                       &
+                      tend(k,j,i) = tend(k,j,i) + flag * tmp_flux_h(k) * ( g /                       &
                                     MERGE( vpt_reference, vpt(k,j,i), use_single_reference_value ) )
                    ENDDO
                    !$ACC END LOOP
@@ -3313,7 +3336,7 @@
 !--                RANS mode: Compute tendency for dissipation-rate-production from shear
                    DO  k = nzb+1, nzt
                       flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
-                      tend(k,j,i) = tend(k,j,i) + flag * tmp_flux(k) *                             &
+                      tend(k,j,i) = tend(k,j,i) + flag * tmp_flux_h(k) *                             &
                                     ( g / MERGE( vpt_reference, vpt(k,j,i),                        &
                                                   use_single_reference_value ) )                   &
                                    * diss(k,j,i)/( e(k,j,i) + 1.0E-20_wp ) * c_3
@@ -4017,6 +4040,9 @@
 
     REAL(wp), DIMENSION(nzb+1:nzt) ::  ml_stratification  !< mixing length according to stratification
     REAL(wp), DIMENSION(nzb+1:nzt) ::  richardson_number  !< gradient Richardson number
+!-- Give the RANS branch its own mixing-length symbol: flang-1.5 confuses the bound arguments
+!-- of PRIVATE arrays that are privatized in more than one OpenACC region of a subroutine.
+    REAL(wp), DIMENSION(nzb+1:nzt) ::  ml_stratification_ri  !< stratification mixing length, RANS branch
 
     REAL(wp), DIMENSION(nzb:nzt+1,nysg:nyng,nxlg:nxrg), INTENT(IN) ::  var  !< temperature
 
@@ -4027,7 +4053,7 @@
        !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i, j) &
        !$ACC PRIVATE(ml, ml_stratification, dvar_dz) &
        !$ACC PRESENT(diss, e, var) &
-       !$ACC PRESENT(dd2zu, delta) PRESENT(topo_flags) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(dd2zu, delta) PRESENT(topo_flags) IF(enable_openacc)
        DO  i = nxl, nxr
           DO  j = nys, nyn
              !$ACC LOOP PRIVATE(k)
@@ -4072,7 +4098,7 @@
        !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i, j) &
        !$ACC PRIVATE(ml, ml_stratification, dvar_dz) &
        !$ACC PRESENT(diss, e, var, topo_flags) &
-       !$ACC PRESENT(dd2zu, delta) PRESENT(distance_to_wall) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(dd2zu, delta) PRESENT(distance_to_wall) IF(enable_openacc)
        DO  i = nxl, nxr
           DO  j = nys, nyn
              !$ACC LOOP PRIVATE(k)
@@ -4117,7 +4143,7 @@
     ELSEIF ( rans_tke_l )  THEN
 
       !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i, j) &
-      !$ACC PRIVATE(ml_stratification, duv2_dz2, richardson_number, dvar_dz) &
+      !$ACC PRIVATE(ml_stratification_ri, duv2_dz2, richardson_number, dvar_dz) &
       !$ACC PRESENT(diss, e, u, v, var, topo_flags) &
       !$ACC PRESENT(dd2zu, ml_blackadar, delta) IF(enable_openacc)
        DO  i = nxl, nxr
@@ -4161,10 +4187,10 @@
              !$ACC LOOP PRIVATE(k)
              DO  k = nzb+1, nzt
                 IF ( richardson_number(k) >= 0.0_wp )  THEN
-                   ml_stratification(k) = ml_blackadar(k)                                          &
+                   ml_stratification_ri(k) = ml_blackadar(k)                                          &
                                         / ( 1.0_wp + 5.0_wp * richardson_number(k) )
                 ELSE
-                   ml_stratification(k) = ml_blackadar(k)                                          &
+                   ml_stratification_ri(k) = ml_blackadar(k)                                          &
                                         * SQRT( 1.0_wp - 16.0_wp * richardson_number(k) )
                 ENDIF
              ENDDO
@@ -4174,7 +4200,7 @@
              DO  k = nzb+1, nzt
 
                 diss(k,j,i) = c_0**3 * e(k,j,i) * SQRT( e(k,j,i) )                                 &
-                            / MIN( ml_stratification(k), delta(k,j,i) )                            &
+                            / MIN( ml_stratification_ri(k), delta(k,j,i) )                            &
                             * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
 
              ENDDO
@@ -4188,7 +4214,7 @@
     !$ACC PARALLEL LOOP COLLAPSE(3) &
     !$ACC PRIVATE(i, j, k, mask_bottom, mask_left, mask_north, mask_right, mask_south, mask_top) &
     !$ACC PRESENT(diss, e, km, tend, topo_flags) &
-    !$ACC PRESENT(ddzu, ddzw, rho_air_zw, drho_air) DEFAULT(NONE) IF(enable_openacc)
+    !$ACC PRESENT(ddzu, ddzw, rho_air_zw, drho_air) IF(enable_openacc)
     DO  i = nxl, nxr
        DO  j = nys, nyn
           DO  k = nzb+1, nzt
@@ -4735,7 +4761,7 @@
 !--    depends on the order how surfaces are accessed.
        !$OMP PARALLEL DO PRIVATE(i,j,k)
        !$ACC PARALLEL LOOP PRIVATE(i,j,k) &
-       !$ACC PRESENT(bc_hv, kh, km) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(bc_hv, kh, km) IF(enable_openacc)
        DO  m = 1, bc_hv%ns
           i = bc_hv%i(m)
           j = bc_hv%j(m)
@@ -4752,7 +4778,7 @@
     !$OMP PARALLEL DO
     !$ACC PARALLEL LOOP COLLAPSE(2) &
     !$ACC PRIVATE(i,j) &
-    !$ACC PRESENT(kh, km) DEFAULT(NONE) IF(enable_openacc)
+    !$ACC PRESENT(kh, km) IF(enable_openacc)
     DO  i = nxl, nxr
        DO  j = nys, nyn
           km(nzt+1,j,i) = km(nzt,j,i)
@@ -4822,9 +4848,15 @@
     REAL(wp)     ::  var_reference       !< reference temperature
 
     !DIR$ ATTRIBUTES ALIGN:64:: ml_local_profile, ml_stratification, richardson_number
+    !DIR$ ATTRIBUTES ALIGN:64:: ml_local_profile_e, ml_local_profile_ri, ml_stratification_ri
     REAL(wp), DIMENSION(nzb+1:nzt) ::  ml_local_profile   !< mixing length (all heights)
     REAL(wp), DIMENSION(nzb+1:nzt) ::  ml_stratification  !< mixing length according to stratification
     REAL(wp), DIMENSION(nzb+1:nzt) ::  richardson_number  !< gradient Richardson number
+!-- Give the RANS branches their own mixing-length symbols: flang-1.5 confuses the bound
+!-- arguments of PRIVATE arrays that are privatized in more than one OpenACC region.
+    REAL(wp), DIMENSION(nzb+1:nzt) ::  ml_local_profile_ri !< mixing length (all heights), rans_tke_l branch
+    REAL(wp), DIMENSION(nzb+1:nzt) ::  ml_stratification_ri !< stratification mixing length, rans_tke_l branch
+    REAL(wp), DIMENSION(nzb+1:nzt) ::  ml_local_profile_e  !< mixing length (all heights), rans_tke_e branch
 
     REAL(wp), DIMENSION(nzb:nzt+1,nysg:nyng,nxlg:nxrg), INTENT(IN) ::  var  !< temperature
 
@@ -4834,13 +4866,14 @@
 
 !
 !-- Initialization for calculation of the mixing length profile
-    !$ACC KERNELS PRESENT(sums_l_l) DEFAULT(NONE) IF(enable_openacc)
+    !$ACC KERNELS PRESENT(sums_l_l) IF(enable_openacc)
     sums_l_l = 0.0_wp
     !$ACC END KERNELS
 
 !
 !-- Compute the turbulent diffusion coefficient for momentum
-    !$OMP PARALLEL PRIVATE (dvar_dz,duv2_dz2,i,j,k,ml,ml_local_profile,ml_stratification,          &
+    !$OMP PARALLEL PRIVATE (dvar_dz,duv2_dz2,i,j,k,ml,ml_local_profile,ml_local_profile_e,         &
+    !$OMP                   ml_local_profile_ri,ml_stratification,ml_stratification_ri,            &
     !$OMP                   richardson_number,sr,tn)
 !$  tn = omp_get_thread_num()
 
@@ -4849,7 +4882,7 @@
        !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i, j) &
        !$ACC PRIVATE(dvar_dz, ml, ml_stratification, ml_local_profile) &
        !$ACC PRESENT(topo_flags, var, dd2zu, e, delta) &
-       !$ACC PRESENT(kh, km, sums_l_l, rmask) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(kh, km, sums_l_l, rmask) IF(enable_openacc)
        DO  i = nxl, nxr
           DO  j = nys, nyn
              !$ACC LOOP PRIVATE(k)
@@ -4989,7 +5022,7 @@
 
        !$OMP DO
        !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i, j) &
-       !$ACC PRIVATE(dvar_dz, duv2_dz2, ml_stratification, ml_local_profile, richardson_number) &
+       !$ACC PRIVATE(dvar_dz, duv2_dz2, ml_stratification_ri, ml_local_profile_ri, richardson_number) &
        !$ACC PRESENT(topo_flags, var, dd2zu, e, u, v, delta, ml_blackadar) &
        !$ACC PRESENT(kh, km, sums_l_l, rmask) IF(enable_openacc)
        DO  i = nxl, nxr
@@ -5029,10 +5062,10 @@
              !$ACC LOOP PRIVATE(k)
              DO  k = nzb+1, nzt
                 IF ( richardson_number(k) >= 0.0_wp )  THEN
-                   ml_stratification(k) = ml_blackadar(k)                                          &
+                   ml_stratification_ri(k) = ml_blackadar(k)                                          &
                                         / ( 1.0_wp + 5.0_wp * richardson_number(k) )
                 ELSE
-                   ml_stratification(k) = ml_blackadar(k)
+                   ml_stratification_ri(k) = ml_blackadar(k)
                 ENDIF
 
              ENDDO
@@ -5041,9 +5074,9 @@
              !$ACC LOOP PRIVATE(k)
              !DIR$ IVDEP
              DO  k = nzb+1, nzt
-                ml_local_profile(k) = MIN( ml_stratification(k), delta(k,j,i) )                    &
+                ml_local_profile_ri(k) = MIN( ml_stratification_ri(k), delta(k,j,i) )                    &
                                     * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
-                km(k,j,i) = c_0 * ml_local_profile(k) * SQRT( e(k,j,i) )
+                km(k,j,i) = c_0 * ml_local_profile_ri(k) * SQRT( e(k,j,i) )
                 kh(k,j,i) = km(k,j,i) / prandtl_number
              ENDDO
 !
@@ -5052,7 +5085,7 @@
              DO  sr = 0, statistic_regions
                 DO  k = nzb+1, nzt
                    !$ACC ATOMIC UPDATE
-                   sums_l_l(k,sr,tn) = sums_l_l(k,sr,tn) + ml_local_profile(k) * rmask(j,i,sr)
+                   sums_l_l(k,sr,tn) = sums_l_l(k,sr,tn) + ml_local_profile_ri(k) * rmask(j,i,sr)
                 ENDDO
              ENDDO
 
@@ -5063,7 +5096,7 @@
 
        !$OMP DO
        !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i, j) &
-       !$ACC PRIVATE(ml_local_profile) &
+       !$ACC PRIVATE(ml_local_profile_e) &
        !$ACC PRESENT(topo_flags, e, diss, rmask) &
        !$ACC PRESENT(kh, km, sums_l_l) IF(enable_openacc)
        DO  i = nxl, nxr
@@ -5074,11 +5107,11 @@
              !DIR$ IVDEP
              DO  k = nzb+1, nzt
 
-                ml_local_profile(k) = c_0**3 * e(k,j,i) * SQRT(e(k,j,i))                           &
+                ml_local_profile_e(k) = c_0**3 * e(k,j,i) * SQRT(e(k,j,i))                           &
                                     / ( diss(k,j,i) + 1.0E-30_wp )                                 &
                                     * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
 
-                km(k,j,i) = c_0 * SQRT( e(k,j,i) ) * ml_local_profile(k)
+                km(k,j,i) = c_0 * SQRT( e(k,j,i) ) * ml_local_profile_e(k)
                 kh(k,j,i) = km(k,j,i) / prandtl_number
 
              ENDDO
@@ -5088,7 +5121,7 @@
              DO  sr = 0, statistic_regions
                 DO  k = nzb+1, nzt
                    !$ACC ATOMIC UPDATE
-                   sums_l_l(k,sr,tn) = sums_l_l(k,sr,tn) + ml_local_profile(k) * rmask(j,i,sr)
+                   sums_l_l(k,sr,tn) = sums_l_l(k,sr,tn) + ml_local_profile_e(k) * rmask(j,i,sr)
                 ENDDO
              ENDDO
 
@@ -5098,7 +5131,7 @@
     ENDIF
 !
 !-- Quasi boundary-condition for data output.
-    !$ACC KERNELS PRESENT(sums_l_l) DEFAULT(NONE) IF(enable_openacc)
+    !$ACC KERNELS PRESENT(sums_l_l) IF(enable_openacc)
     sums_l_l(nzt+1,:,tn) = sums_l_l(nzt,:,tn)
     !$ACC END KERNELS
     !$OMP END PARALLEL

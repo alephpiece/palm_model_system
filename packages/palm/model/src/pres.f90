@@ -387,7 +387,7 @@
     IF ( psolver(1:9) == 'multigrid' )  THEN
        !$OMP PARALLEL DO PRIVATE (i,j,k) SCHEDULE( STATIC )
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
-       !$ACC PRESENT(d) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(d) IF(enable_openacc)
        DO  i = nxl-1, nxr+1
           DO  j = nys-1, nyn+1
              DO  k = nzb, nzt+1
@@ -398,7 +398,7 @@
     ELSE
        !$OMP PARALLEL DO PRIVATE (i,j,k) SCHEDULE( STATIC )
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
-       !$ACC PRESENT(d) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(d) IF(enable_openacc)
        DO  i = nxl, nxr
           DO  j = nys, nyn
              DO  k = nzb+1, nzt
@@ -415,7 +415,7 @@
     !$OMP DO SCHEDULE( STATIC )
     !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
     !$ACC PRESENT(u, v, w, rho_air, rho_air_zw, ddzw, topo_flags) &
-    !$ACC PRESENT(d) DEFAULT(NONE) IF(enable_openacc)
+    !$ACC PRESENT(d) IF(enable_openacc)
     DO  i = nxl, nxr
        DO  j = nys, nyn
           DO  k = 1, nzt
@@ -498,7 +498,7 @@
 !--    Store computed perturbation pressure and set boundary condition in z-direction.
        !$OMP PARALLEL DO PRIVATE (i,j,k) SCHEDULE( STATIC )
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
-       !$ACC PRESENT(d, tend) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(d, tend) IF(enable_openacc)
        DO  i = nxl, nxr
           DO  j = nys, nyn
              DO  k = nzb+1, nzt
@@ -524,7 +524,7 @@
 !--    Neumann
        IF ( ibc_p_b == 1 )  THEN
           !$OMP PARALLEL DO PRIVATE (i,j) SCHEDULE( STATIC )
-          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(2) DEFAULT(NONE) &
+          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(2) &
           !$ACC PRESENT(tend) IF(enable_openacc)
           DO  i = nxlg, nxrg
              DO  j = nysg, nyng
@@ -563,7 +563,7 @@
 !--       Dirichlet
           !$OMP PARALLEL DO PRIVATE (i,j) SCHEDULE( STATIC )
           !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i, j) &
-          !$ACC PRESENT(tend) DEFAULT(NONE) IF(enable_openacc)
+          !$ACC PRESENT(tend) IF(enable_openacc)
           DO  i = nxlg, nxrg
              DO  j = nysg, nyng
                 tend(nzt+1,j,i) = 0.0_wp
@@ -621,7 +621,7 @@
     IF ( intermediate_timestep_count <= 1 )  THEN
        !$OMP PARALLEL DO PRIVATE (i,j,k) SCHEDULE( STATIC )
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
-       !$ACC PRESENT(p, tend) PRESENT(rho_air) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(p, tend) PRESENT(rho_air) IF(enable_openacc)
        DO  i = nxl-1, nxr+1
           DO  j = nys-1, nyn+1
              DO  k = nzb, nzt+1
@@ -633,7 +633,7 @@
     ELSEIF ( intermediate_timestep_count > 1 )  THEN
        !$OMP PARALLEL DO PRIVATE (i,j,k) SCHEDULE( STATIC )
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
-       !$ACC PRESENT(p, tend) PRESENT(rho_air) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(p, tend) PRESENT(rho_air) IF(enable_openacc)
        DO  i = nxl-1, nxr+1
           DO  j = nys-1, nyn+1
              DO  k = nzb, nzt+1
@@ -662,7 +662,7 @@
 !-- imposed at the boundaries.
     !$OMP PARALLEL DO PRIVATE (i,j,k) SCHEDULE( STATIC )
     !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i, j, k) &
-    !$ACC PRESENT(u, v, w, tend, ddzu, topo_flags) DEFAULT(NONE) IF(enable_openacc)
+    !$ACC PRESENT(u, v, w, tend, ddzu, topo_flags) IF(enable_openacc)
     DO  i = nxl, nxr
        DO  j = nys, nyn
 

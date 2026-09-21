@@ -1417,7 +1417,7 @@
 !-- prognostic_equations.
     IF ( ws_scheme_mom )  THEN
        !$ACC KERNELS PRESENT(sums_wsus_ws_l, sums_wsvs_ws_l) &
-       !$ACC PRESENT(sums_us2_ws_l, sums_vs2_ws_l, sums_ws2_ws_l) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(sums_us2_ws_l, sums_vs2_ws_l, sums_ws2_ws_l) IF(enable_openacc)
        sums_wsus_ws_l = 0.0_wp
        sums_wsvs_ws_l = 0.0_wp
        sums_us2_ws_l  = 0.0_wp
@@ -1427,7 +1427,7 @@
     ENDIF
 
     IF ( ws_scheme_sca )  THEN
-       !$ACC KERNELS PRESENT(sums_wspts_ws_l) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC KERNELS PRESENT(sums_wspts_ws_l) IF(enable_openacc)
        sums_wspts_ws_l = 0.0_wp
        !$ACC END KERNELS
        IF ( humidity       )  sums_wsqs_ws_l = 0.0_wp
@@ -3801,7 +3801,7 @@
     !$ACC PRESENT(sums_wsnis_ws_l, sums_wsqis_ws_l) &
     !$ACC PRESENT(sums_wsngs_ws_l, sums_wsqgs_ws_l) &
     !$ACC PRESENT(sums_wsnss_ws_l, sums_wsqss_ws_l) &
-    !$ACC PRESENT(sums_salsa_ws_l, topo_flags) DEFAULT(NONE) IF(enable_openacc)
+    !$ACC PRESENT(sums_salsa_ws_l, topo_flags) IF(enable_openacc)
     DO  i = nxl, nxr
        DO  j = nys, nyn
 !
@@ -5376,7 +5376,7 @@
     !$ACC PRESENT(tend) &
     !$ACC PRESENT(hom(:,1,1:3,0)) &
     !$ACC PRESENT(weight_substep(intermediate_timestep_count)) &
-    !$ACC PRESENT(sums_us2_ws_l, sums_wsus_ws_l) DEFAULT(NONE) IF(enable_openacc)
+    !$ACC PRESENT(sums_us2_ws_l, sums_wsus_ws_l) IF(enable_openacc)
     DO  i = nxlu, nxr
 
        DO  j = nys, nyn
@@ -5987,7 +5987,7 @@
     !$ACC PRESENT(tend) &
     !$ACC PRESENT(hom(:,1,1:3,0)) &
     !$ACC PRESENT(weight_substep(intermediate_timestep_count)) &
-    !$ACC PRESENT(sums_vs2_ws_l, sums_wsvs_ws_l) DEFAULT(NONE) IF(enable_openacc)
+    !$ACC PRESENT(sums_vs2_ws_l, sums_wsvs_ws_l) IF(enable_openacc)
     DO  i = nxl, nxr
        DO  j = nysv, nyn
 !
@@ -6609,7 +6609,7 @@
     !$ACC PRESENT(weight_substep(intermediate_timestep_count)) &
     !$ACC PRESENT(sums_ws2_ws_l) &
     !$ACC PRESENT(drho_air_zw, ddzu, rho_air) &
-    !$ACC DEFAULT(NONE) IF(enable_openacc)
+    !$ACC IF(enable_openacc)
     DO  i = nxl, nxr
        DO  j = nys, nyn
 !

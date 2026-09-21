@@ -1666,16 +1666,13 @@
 !
 !--    The calculation of f2 is based on only one wilting point value for all soil layers. The value
 !--    at k=nzb_soil is used here as a proxy but might need refinement in the future.
+!--    Initialize the dry-soil value, then handle the mutually exclusive moisture ranges.
+       f2(m) = 1.0E-20_wp
+       IF ( m_total >= surf_lsm%m_fc(nzb_soil,m) )  f2(m) = 1.0_wp
        IF ( m_total > surf_lsm%m_wilt(nzb_soil,m)  .AND.  m_total < surf_lsm%m_fc(nzb_soil,m) )    &
        THEN
           f2(m) = ( m_total - surf_lsm%m_wilt(nzb_soil,m) ) /                                      &
                   ( surf_lsm%m_fc(nzb_soil,m) - surf_lsm%m_wilt(nzb_soil,m) )
-       ELSEIF ( m_total >= surf_lsm%m_fc(nzb_soil,m) )  THEN
-          f2(m) = 1.0_wp
-!
-!--    f2 = 0 for very dry soils.
-       ELSE
-          f2(m) = 1.0E-20_wp
        ENDIF
 !
 !--    Calculate water vapour pressure at saturation and convert to hPa.
@@ -1771,12 +1768,15 @@
                                     dz_soil(nzb_soil) * 0.5_wp
             lambda_surface = lambda_soil
 
-          ELSEIF ( t_surface%var_1d(m) >= t_soil%var_2d(nzb_soil,m) )  THEN
-             lambda_surface = surf_lsm%lambda_surface_s(m) * lambda_soil /                         &
-                              ( surf_lsm%lambda_surface_s(m) + lambda_soil )
           ELSE
-             lambda_surface = surf_lsm%lambda_surface_u(m) * lambda_soil /                         &
-                              ( surf_lsm%lambda_surface_u(m) + lambda_soil )
+!--          Nested IF instead of ELSEIF (flang-classic OpenACC codegen bug workaround)
+             IF ( t_surface%var_1d(m) >= t_soil%var_2d(nzb_soil,m) )  THEN
+                lambda_surface = surf_lsm%lambda_surface_s(m) * lambda_soil /                      &
+                                 ( surf_lsm%lambda_surface_s(m) + lambda_soil )
+             ELSE
+                lambda_surface = surf_lsm%lambda_surface_u(m) * lambda_soil /                      &
+                                 ( surf_lsm%lambda_surface_u(m) + lambda_soil )
+             ENDIF
           ENDIF
        ELSE
           lambda_surface = surf_lsm%lambda_surface_s(m)
@@ -1818,16 +1818,19 @@
           f_qsws_veg  = 0.0_wp
           f_qsws_soil = 0.0_wp
           f_qsws_liq  = rho_lv / surf_lsm%r_a(m)
-       ELSEIF ( surf_lsm%pavement_surface(m) )  THEN
-          f_qsws_veg  = 0.0_wp
-          f_qsws_soil = 0.0_wp
-          f_qsws_liq  = rho_lv * surf_lsm%c_liq(m) / surf_lsm%r_a(m)
        ELSE
-          f_qsws_veg  = rho_lv * surf_lsm%c_veg(m) * ( 1.0_wp          - surf_lsm%c_liq(m)    ) /  &
-                                                     ( surf_lsm%r_a(m) + surf_lsm%r_canopy(m) )
-          f_qsws_soil = rho_lv * ( 1.0_wp - surf_lsm%c_veg(m) ) * ( 1.0_wp - surf_lsm%c_liq(m) ) / &
-                                 ( surf_lsm%r_a(m) + surf_lsm%r_soil(m) )
-          f_qsws_liq  = rho_lv * surf_lsm%c_liq(m) / surf_lsm%r_a(m)
+!--       Nested IF instead of ELSEIF (flang-classic OpenACC codegen bug workaround)
+          IF ( surf_lsm%pavement_surface(m) )  THEN
+             f_qsws_veg  = 0.0_wp
+             f_qsws_soil = 0.0_wp
+             f_qsws_liq  = rho_lv * surf_lsm%c_liq(m) / surf_lsm%r_a(m)
+          ELSE
+             f_qsws_veg  = rho_lv * surf_lsm%c_veg(m) * ( 1.0_wp          - surf_lsm%c_liq(m)    ) /  &
+                                                        ( surf_lsm%r_a(m) + surf_lsm%r_canopy(m) )
+             f_qsws_soil = rho_lv * ( 1.0_wp - surf_lsm%c_veg(m) ) * ( 1.0_wp - surf_lsm%c_liq(m) ) / &
+                                    ( surf_lsm%r_a(m) + surf_lsm%r_soil(m) )
+             f_qsws_liq  = rho_lv * surf_lsm%c_liq(m) / surf_lsm%r_a(m)
+          ENDIF
        ENDIF
 
        f_shf  = rho_cp / surf_lsm%r_a(m)
@@ -1888,8 +1891,11 @@
           IF ( runge_l )  THEN
              IF ( intermediate_timestep_count == 1 )  THEN
                 tt_surface_m%var_1d(m) = tend
-             ELSEIF ( intermediate_timestep_count < intermediate_timestep_count_max )  THEN
-                tt_surface_m%var_1d(m) = -9.5625_wp * tend + 5.3125_wp * tt_surface_m%var_1d(m)
+             ELSE
+!--             Nested IF instead of ELSEIF (flang-classic OpenACC codegen bug workaround)
+                IF ( intermediate_timestep_count < intermediate_timestep_count_max )  THEN
+                   tt_surface_m%var_1d(m) = -9.5625_wp * tend + 5.3125_wp * tt_surface_m%var_1d(m)
+                ENDIF
              ENDIF
           ENDIF
        ENDIF
@@ -2065,8 +2071,11 @@
           IF ( runge_l )  THEN
              IF ( intermediate_timestep_count == 1 )  THEN
                 tm_liq_m%var_1d(m) = tend
-             ELSEIF ( intermediate_timestep_count < intermediate_timestep_count_max )  THEN
-                tm_liq_m%var_1d(m) = -9.5625_wp * tend + 5.3125_wp * tm_liq_m%var_1d(m)
+             ELSE
+!--             Nested IF instead of ELSEIF (flang-classic OpenACC codegen bug workaround)
+                IF ( intermediate_timestep_count < intermediate_timestep_count_max )  THEN
+                   tm_liq_m%var_1d(m) = -9.5625_wp * tend + 5.3125_wp * tm_liq_m%var_1d(m)
+                ENDIF
              ENDIF
           ENDIF
 

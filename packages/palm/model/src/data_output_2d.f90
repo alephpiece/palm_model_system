@@ -1537,9 +1537,18 @@
                    ELSE
 !
 !--                   Just store the respective section on the local array
-                      !$ACC KERNELS DEFAULT(PRESENT) IF(enable_openacc)
-                      local_2d = local_pf(:,:,layer_xy)
-                      !$ACC END KERNELS
+                      IF ( enable_openacc )  THEN
+                         !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i, j) &
+                         !$ACC DEFAULT(PRESENT) IF(enable_openacc)
+                         DO  i = nxl, nxr
+                            DO  j = nys, nyn
+                               local_2d(i,j) = local_pf(i,j,layer_xy)
+                            ENDDO
+                         ENDDO
+                         !$ACC END PARALLEL LOOP
+                      ELSE
+                         local_2d = local_pf(:,:,layer_xy)
+                      ENDIF
 
                    ENDIF
 
@@ -1757,9 +1766,18 @@
 !--                   available on this PE!)
                       IF ( section(is,s_ind) >= nys  .AND.  section(is,s_ind) <= nyn )  THEN
                          j = section(is,s_ind)
-                         !$ACC KERNELS DEFAULT(PRESENT) IF(enable_openacc)
-                         local_2d = local_pf(:,j,nzb_do:nzt_do)
-                         !$ACC END KERNELS
+                         IF ( enable_openacc )  THEN
+                            !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i, k) &
+                            !$ACC DEFAULT(PRESENT) IF(enable_openacc)
+                            DO  i = nxl, nxr
+                               DO  k = nzb_do, nzt_do
+                                  local_2d(i,k) = local_pf(i,j,k)
+                               ENDDO
+                            ENDDO
+                            !$ACC END PARALLEL LOOP
+                         ELSE
+                            local_2d = local_pf(:,j,nzb_do:nzt_do)
+                         ENDIF
                       ENDIF
 
                    ENDIF
@@ -1976,9 +1994,18 @@
 !--                   available on this PE!)
                       IF ( section(is,s_ind) >= nxl  .AND.  section(is,s_ind) <= nxr )  THEN
                          i = section(is,s_ind)
-                         !$ACC KERNELS DEFAULT(PRESENT) IF(enable_openacc)
-                         local_2d = local_pf(i,:,nzb_do:nzt_do)
-                         !$ACC END KERNELS
+                         IF ( enable_openacc )  THEN
+                            !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(j, k) &
+                            !$ACC DEFAULT(PRESENT) IF(enable_openacc)
+                            DO  j = nys, nyn
+                               DO  k = nzb_do, nzt_do
+                                  local_2d(j,k) = local_pf(i,j,k)
+                               ENDDO
+                            ENDDO
+                            !$ACC END PARALLEL LOOP
+                         ELSE
+                            local_2d = local_pf(i,:,nzb_do:nzt_do)
+                         ENDIF
                       ENDIF
 
                    ENDIF

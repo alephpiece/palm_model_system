@@ -592,7 +592,7 @@
                      * MERGE( 1.0_wp, 0.0_wp, surf%consider_stability(m) )
        ENDDO
     ELSE
-       !$ACC PARALLEL LOOP PRESENT(surf) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PARALLEL LOOP PRESENT(surf) IF(enable_openacc)
        DO  m = 1, surf%ns
           w_lfc(m) = 0.0_wp
        ENDDO
@@ -600,7 +600,7 @@
 
     !$OMP PARALLEL DO PRIVATE(i, ibit, j, k, u_comp, v_comp, w_comp, vel_dot)
     !$ACC PARALLEL LOOP PRIVATE(i, ibit, j, k, u_comp, v_comp, w_comp, vel_dot) &
-    !$ACC PRESENT(surf, u, v, w) DEFAULT(NONE) IF(enable_openacc)
+    !$ACC PRESENT(surf, u, v, w) IF(enable_openacc)
     DO  m = 1, surf%ns
        i = surf%iref(m)
        j = surf%jref(m)
@@ -646,7 +646,7 @@
 
     !$OMP PARALLEL DO PRIVATE(i, j, k, u_comp, u_grid, v_comp, w_comp, vel_dot)
     !$ACC PARALLEL LOOP PRIVATE(i, j, k, u_comp, u_grid, v_comp, w_comp, vel_dot) &
-    !$ACC PRESENT(surf, u, v, w) DEFAULT(NONE) IF(enable_openacc)
+    !$ACC PRESENT(surf, u, v, w) IF(enable_openacc)
     DO  m = 1, surf%ns
        i = surf%iref(m)
        j = surf%jref(m)
@@ -699,7 +699,7 @@
 
     !$OMP PARALLEL DO PRIVATE(i, j, k, u_comp, v_comp, w_comp, vel_dot)
     !$ACC PARALLEL LOOP PRIVATE(i, j, k, u_comp, v_comp, w_comp, vel_dot) &
-    !$ACC PRESENT(surf, u, v, w) DEFAULT(NONE) IF(enable_openacc)
+    !$ACC PRESENT(surf, u, v, w) IF(enable_openacc)
     DO  m = 1, surf%ns
        i = surf%iref(m)
        j = surf%jref(m)
@@ -820,80 +820,8 @@
           ENDIF
 !
 !--       Iteration to find Obukhov length.
-          iter = 0
-          DO
-             iter = iter + 1
-!
-!--          In case of divergence, use the value of the previous time step.
-             IF ( iter > 1000 )  THEN
-                ol(m) = ol_prev
-                EXIT
-             ENDIF
-
-!
-!--          Calculate step size for central difference.
-             ol_m = ol(m)
-             ol_l = ol_m - 0.001_wp * ol_m
-             ol_u = ol_m + 0.001_wp * ol_m
-
-             IF ( ibc_pt_b /= 1 )  THEN
-!
-!--             Calculate f = Ri - [...]/[...]^2 = 0.
-                f = rib(m) - ( z_mo(m) / ol_m ) * ( ln_z_z0h(m) - psi_h( z_mo(m) / ol_m )          &
-                                                                + psi_h( z0h(m)  / ol_m ) )        &
-                                                / ( ln_z_z0(m)  - psi_m( z_mo(m) / ol_m )          &
-                                                                + psi_m( z0(m)   / ol_m ) )**2
-!
-!--             Calculate df/dL.
-                f_d_ol = ( - ( z_mo(m) / ol_u ) * ( ln_z_z0h(m) - psi_h( z_mo(m) / ol_u )          &
-                                                                + psi_h( z0h(m)  / ol_u ) )        &
-                                                / ( ln_z_z0(m)  - psi_m( z_mo(m) / ol_u )          &
-                                                                + psi_m( z0(m)   / ol_u ) )**2     &
-                           + ( z_mo(m) / ol_l ) * ( ln_z_z0h(m) - psi_h( z_mo(m) / ol_l )          &
-                                                                + psi_h( z0h(m)  / ol_l ) )        &
-                                                / ( ln_z_z0(m)  - psi_m( z_mo(m) / ol_l )          &
-                                                                + psi_m( z0(m)   / ol_l ) )**2     &
-                         ) / ( ol_u - ol_l )
-             ELSE
-!
-!--             Calculate f = Ri - 1 /[...]^3 = 0.
-                f = rib(m) - ( z_mo(m) / ol_m ) /                                                  &
-                             ( ln_z_z0(m) - psi_m( z_mo(m) / ol_m ) + psi_m( z0(m) / ol_m ) )**3
-
-!
-!--             Calculate df/dL.
-                f_d_ol = ( - ( z_mo(m) / ol_u ) / ( ln_z_z0(m) - psi_m( z_mo(m) / ol_u )           &
-                                                               + psi_m( z0(m)   / ol_u ) )**3      &
-                           + ( z_mo(m) / ol_l ) / ( ln_z_z0(m) - psi_m( z_mo(m) / ol_l )           &
-                                                               + psi_m( z0(m)   / ol_l ) )**3      &
-                         ) / ( ol_u - ol_l )
-             ENDIF
-!
-!--          Calculate new L.
-             ol(m) = ol_m - f / f_d_ol
-!
-!--          Ensure that the bulk Richardson number and the Obukhov length have the same sign and
-!--          ensure convergence. If the sign is not the same, the above calculated Obukhov length
-!--          obviously overshooted to the opposite side, so the next iteration should start with
-!--          a smaller value.
-             IF ( ol(m) * ol_m < 0.0_wp )  ol(m) = ol_m * 0.5_wp
-!
-!--          In the deep neutral zone, set L to the maximum allowed value.
-             IF ( ABS( ol(m) ) > ol_max )  THEN
-                ol(m) = SIGN( ol_max, ol(m) )
-                EXIT
-             ENDIF
-!
-!--          Assure that Obukhov length does not become zero.
-             IF ( ABS( ol(m) ) < ol_min )  THEN
-                ol(m) = SIGN( ol_min, ol(m) )
-                EXIT
-             ENDIF
-!
-!--          Check for convergence.
-             IF ( ABS( ( ol(m) - ol_m ) /  ol(m) ) < ol_tol )  EXIT
-
-          ENDDO
+          CALL newton_ol_cache( m, ns, ibc_pt_b, ol_max, ol_min, ol_tol, &
+                                ln_z_z0, ln_z_z0h, ol, rib, z0, z0h, z_mo, ol_prev )
        ENDDO
 
     ELSE
@@ -901,7 +829,7 @@
 !--    Calculate the Obukhov length using Newton iteration (vectorized version).
 !--    First set arrays required for vectorization.
        !$ACC PARALLEL LOOP &
-       !$ACC PRESENT(ol, rib) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(ol, rib) IF(enable_openacc)
        DO  m = 1, ns
 !
 !--       Store current value in case the Newton iteration fails.
@@ -939,99 +867,101 @@
           !$ACC PRIVATE(arg_h_zmo_m, arg_h_z0h_m, arg_m_zmo_m, arg_m_z0_m) &
           !$ACC PRIVATE(arg_h_zmo_u, arg_h_z0h_u, arg_m_zmo_u, arg_m_z0_u) &
           !$ACC PRIVATE(arg_h_zmo_l, arg_h_z0h_l, arg_m_zmo_l, arg_m_z0_l) &
-          !$ACC PRESENT(ns, ln_z_z0, ln_z_z0h, ol, rib, z0, z0h, z_mo) DEFAULT(NONE) IF(enable_openacc)
+          !$ACC PRESENT(ns, ln_z_z0, ln_z_z0h, ol, rib, z0, z0h, z_mo) IF(enable_openacc)
           DO  m = 1, ns
-             IF ( convergence_reached(m) )  CYCLE
+             IF ( .NOT. convergence_reached(m) ) THEN
 
 !
 !--          Calculate step size for central difference.
-             ol_m_vec = ol(m)
-             ol_l_vec = ol_m_vec - 0.001_wp * ol_m_vec
-             ol_u_vec = ol_m_vec + 0.001_wp * ol_m_vec
+                ol_m_vec = ol(m)
+                ol_l_vec = ol_m_vec - 0.001_wp * ol_m_vec
+                ol_u_vec = ol_m_vec + 0.001_wp * ol_m_vec
 
-             IF ( ibc_pt_b /= 1 )  THEN
+                IF ( ibc_pt_b /= 1 )  THEN
 !
 !--             Calculate f = Ri - [...]/[...]^2 = 0.
-                arg_h_zmo_m = z_mo(m) / ol_m_vec
-                arg_h_z0h_m = z0h(m)  / ol_m_vec
-                arg_m_zmo_m = z_mo(m) / ol_m_vec
-                arg_m_z0_m  = z0(m)   / ol_m_vec
-                f_vec = rib(m) - ( arg_h_zmo_m ) * ( ln_z_z0h(m) - psi_h( arg_h_zmo_m )            &
-                                                                 + psi_h( arg_h_z0h_m ) )          &
-                                                 / ( ln_z_z0(m)  - psi_m( arg_m_zmo_m )            &
-                                                                 + psi_m( arg_m_z0_m ) )**2
+                   arg_h_zmo_m = z_mo(m) / ol_m_vec
+                   arg_h_z0h_m = z0h(m)  / ol_m_vec
+                   arg_m_zmo_m = z_mo(m) / ol_m_vec
+                   arg_m_z0_m  = z0(m)   / ol_m_vec
+                   f_vec = rib(m) - ( arg_h_zmo_m ) * ( ln_z_z0h(m) - psi_h( arg_h_zmo_m )            &
+                                                                    + psi_h( arg_h_z0h_m ) )          &
+                                                    / ( ln_z_z0(m)  - psi_m( arg_m_zmo_m )            &
+                                                                    + psi_m( arg_m_z0_m ) )**2
 !
 !--             Calculate df/dL.
-                arg_h_zmo_u = z_mo(m) / ol_u_vec
-                arg_h_z0h_u = z0h(m)  / ol_u_vec
-                arg_m_zmo_u = z_mo(m) / ol_u_vec
-                arg_m_z0_u  = z0(m)   / ol_u_vec
-                arg_h_zmo_l = z_mo(m) / ol_l_vec
-                arg_h_z0h_l = z0h(m)  / ol_l_vec
-                arg_m_zmo_l = z_mo(m) / ol_l_vec
-                arg_m_z0_l  = z0(m)   / ol_l_vec
-                f_d_ol_vec = ( - ( arg_h_zmo_u ) * ( ln_z_z0h(m) - psi_h( arg_h_zmo_u )            &
-                                                                 + psi_h( arg_h_z0h_u ) )          &
-                                                 / ( ln_z_z0(m)  - psi_m( arg_m_zmo_u )            &
-                                                                 + psi_m( arg_m_z0_u  ) )**2       &
-                               + ( arg_h_zmo_l ) * ( ln_z_z0h(m) - psi_h( arg_h_zmo_l )            &
-                                                                 + psi_h( arg_h_z0h_l ) )          &
-                                                 / ( ln_z_z0(m)  - psi_m( arg_m_zmo_l )            &
-                                                                 + psi_m( arg_m_z0_l  ) )**2       &
-                         ) / ( ol_u_vec - ol_l_vec )
-             ELSE
+                   arg_h_zmo_u = z_mo(m) / ol_u_vec
+                   arg_h_z0h_u = z0h(m)  / ol_u_vec
+                   arg_m_zmo_u = z_mo(m) / ol_u_vec
+                   arg_m_z0_u  = z0(m)   / ol_u_vec
+                   arg_h_zmo_l = z_mo(m) / ol_l_vec
+                   arg_h_z0h_l = z0h(m)  / ol_l_vec
+                   arg_m_zmo_l = z_mo(m) / ol_l_vec
+                   arg_m_z0_l  = z0(m)   / ol_l_vec
+                   f_d_ol_vec = ( - ( arg_h_zmo_u ) * ( ln_z_z0h(m) - psi_h( arg_h_zmo_u )            &
+                                                                    + psi_h( arg_h_z0h_u ) )          &
+                                                    / ( ln_z_z0(m)  - psi_m( arg_m_zmo_u )            &
+                                                                    + psi_m( arg_m_z0_u  ) )**2       &
+                                  + ( arg_h_zmo_l ) * ( ln_z_z0h(m) - psi_h( arg_h_zmo_l )            &
+                                                                    + psi_h( arg_h_z0h_l ) )          &
+                                                    / ( ln_z_z0(m)  - psi_m( arg_m_zmo_l )            &
+                                                                    + psi_m( arg_m_z0_l  ) )**2       &
+                            ) / ( ol_u_vec - ol_l_vec )
+                ELSE
 !
 !--             Calculate f = Ri - 1 /[...]^3 = 0.
-                arg_h_zmo_m = z_mo(m) / ol_m_vec
-                arg_m_z0_m  = z0(m)   / ol_m_vec
-                f_vec = rib(m) - ( arg_h_zmo_m ) / ( ln_z_z0(m)  - psi_m( arg_h_zmo_m )            &
-                                                                 + psi_m( arg_m_z0_m  ) )**3
+                   arg_h_zmo_m = z_mo(m) / ol_m_vec
+                   arg_m_z0_m  = z0(m)   / ol_m_vec
+                   f_vec = rib(m) - ( arg_h_zmo_m ) / ( ln_z_z0(m)  - psi_m( arg_h_zmo_m )            &
+                                                                    + psi_m( arg_m_z0_m  ) )**3
 
 !
 !--             Calculate df/dL.
-                arg_m_zmo_u = z_mo(m) / ol_u_vec
-                arg_m_z0_u  = z0(m)   / ol_u_vec
-                arg_m_zmo_l = z_mo(m) / ol_l_vec
-                arg_m_z0_l  = z0(m)   / ol_l_vec
-                f_d_ol_vec = ( - ( arg_m_zmo_u ) / ( ln_z_z0(m)  - psi_m( arg_m_zmo_u )            &
-                                                                 + psi_m( arg_m_z0_u  ) )**3       &
-                               + ( arg_m_zmo_l ) / ( ln_z_z0(m)  - psi_m( arg_m_zmo_l )            &
-                                                                 + psi_m( arg_m_z0_l  ) )**3       &
-                             ) / ( ol_u_vec - ol_l_vec )
-             ENDIF
+                   arg_m_zmo_u = z_mo(m) / ol_u_vec
+                   arg_m_z0_u  = z0(m)   / ol_u_vec
+                   arg_m_zmo_l = z_mo(m) / ol_l_vec
+                   arg_m_z0_l  = z0(m)   / ol_l_vec
+                   f_d_ol_vec = ( - ( arg_m_zmo_u ) / ( ln_z_z0(m)  - psi_m( arg_m_zmo_u )            &
+                                                                    + psi_m( arg_m_z0_u  ) )**3       &
+                                  + ( arg_m_zmo_l ) / ( ln_z_z0(m)  - psi_m( arg_m_zmo_l )            &
+                                                                    + psi_m( arg_m_z0_l  ) )**3       &
+                                ) / ( ol_u_vec - ol_l_vec )
+                ENDIF
 !
 !--          Calculate new L.
-             ol(m) = ol_m_vec - f_vec / f_d_ol_vec
+                ol(m) = ol_m_vec - f_vec / f_d_ol_vec
 
 !
 !--          Ensure that the bulk Richardson number and the Obukhov length have the same sign and
 !--          ensure convergence. If the sign is not the same, the above calculated Obukhov length
 !--          obviously overshooted to the opposite side, so the next iteration should start with
 !--          a smaller value.
-             IF ( ol(m) * ol_m_vec < 0.0_wp )  ol(m) = ol_m_vec * 0.5_wp
+                IF ( ol(m) * ol_m_vec < 0.0_wp )  ol(m) = ol_m_vec * 0.5_wp
 
 !
 !--          Check for convergence.
 !--          This check does not modify ol, therefore this is done first.
-             IF ( ABS( ( ol(m) - ol_m_vec ) /  ol(m) ) < ol_tol )  THEN
-                convergence_reached(m) = .TRUE.
-             ENDIF
+                IF ( ABS( ( ol(m) - ol_m_vec ) /  ol(m) ) < ol_tol )  THEN
+                   convergence_reached(m) = .TRUE.
+                ENDIF
 !
 !--          In the deep neutral zone, set L to the maximum allowed value.
-             IF ( ABS( ol(m) ) > ol_max )  THEN
-                ol(m) = SIGN( ol_max, ol(m) )
-                convergence_reached(m) = .TRUE.
+                IF ( ABS( ol(m) ) > ol_max )  THEN
+                   ol(m) = SIGN( ol_max, ol(m) )
+                   convergence_reached(m) = .TRUE.
+                ENDIF
              ENDIF
           ENDDO
 !
 !--       Assure that Obukhov length does not become zero.
           !$ACC PARALLEL LOOP &
-          !$ACC PRESENT(surf, ns, ol) DEFAULT(NONE) IF(enable_openacc)
+          !$ACC PRESENT(surf, ns, ol) IF(enable_openacc)
           DO  m = 1, surf%ns
-             IF ( convergence_reached(m) )  CYCLE
-             IF ( ABS( ol(m) ) < ol_min )  THEN
-                ol(m) = SIGN( ol_min, ol(m) )
-                convergence_reached(m) = .TRUE.
+             IF ( .NOT. convergence_reached(m) ) THEN
+                IF ( ABS( ol(m) ) < ol_min )  THEN
+                   ol(m) = SIGN( ol_min, ol(m) )
+                   convergence_reached(m) = .TRUE.
+                ENDIF
              ENDIF
           ENDDO
 
@@ -1045,6 +975,114 @@
     !$ACC END DATA
 
  END SUBROUTINE calc_ol
+
+!--------------------------------------------------------------------------------------------------!
+!> Sequential Newton iteration for one surface element. Keeping this loop outside the OpenACC
+!> compute construct avoids an undefined host IR label with DTK 26.04 flang.
+!--------------------------------------------------------------------------------------------------!
+ SUBROUTINE newton_ol_cache( m, ns, ibc_pt_b_in, ol_max_in, ol_min_in, ol_tol_in, &
+                             ln_z_z0, ln_z_z0h, ol, rib, z0, z0h, z_mo, ol_prev )
+
+    !$ACC ROUTINE SEQ
+
+    INTEGER(iwp), INTENT(IN) ::  m  !< running index surface elements
+    INTEGER(iwp), INTENT(IN) ::  ns  !< number of surface elements
+    INTEGER(iwp), INTENT(IN) ::  ibc_pt_b_in  !< index of boundary condition of pt at lowest level
+    REAL(wp), INTENT(IN) ::  ol_max_in  !< allowed absolute maximum value Obukhov length
+    REAL(wp), INTENT(IN) ::  ol_min_in  !< allowed absolute minimum value Obukhov length
+    REAL(wp), INTENT(IN) ::  ol_tol_in  !< convergence limit for Obukhov length, relative tolerance
+    REAL(wp), INTENT(IN), DIMENSION(ns) ::  ln_z_z0   !< logarithm (z/z0)
+    REAL(wp), INTENT(IN), DIMENSION(ns) ::  ln_z_z0h  !< logarithm (z/z0h)
+    REAL(wp), INTENT(INOUT), DIMENSION(ns) ::  ol     !< Obukhov length
+    REAL(wp), INTENT(IN), DIMENSION(ns) ::  rib       !< Richardson flux number
+    REAL(wp), INTENT(IN), DIMENSION(ns) ::  z0        !< roughness length for momentum
+    REAL(wp), INTENT(IN), DIMENSION(ns) ::  z0h       !< roughness length for scalar quantities
+    REAL(wp), INTENT(IN), DIMENSION(ns) ::  z_mo      !< constant flux layer height
+    REAL(wp), INTENT(IN) ::  ol_prev  !< previous time step value of L
+
+    INTEGER(iwp) ::  iter  !< Newton iteration step
+
+
+    REAL(wp) ::  f        !< function for Newton iteration: f = Ri - [...]/[...]^2 = 0
+    REAL(wp) ::  f_d_ol   !< derivative of f
+    REAL(wp) ::  ol_l     !< lower bound of L for Newton iteration
+    REAL(wp) ::  ol_m     !< previous value of L for Newton iteration
+    REAL(wp) ::  ol_u     !< upper bound of L for Newton iteration
+
+    iter = 0
+    DO
+       iter = iter + 1
+!
+!--    In case of divergence, use the value of the previous time step.
+       IF ( iter > 1000 )  THEN
+          ol(m) = ol_prev
+          EXIT
+       ENDIF
+!
+!--    Calculate step size for central difference.
+       ol_m = ol(m)
+       ol_l = ol_m - 0.001_wp * ol_m
+       ol_u = ol_m + 0.001_wp * ol_m
+
+       IF ( ibc_pt_b_in /= 1 )  THEN
+!
+!--       Calculate f = Ri - [...]/[...]^2 = 0.
+          f = rib(m) - ( z_mo(m) / ol_m ) * ( ln_z_z0h(m) - psi_h( z_mo(m) / ol_m )          &
+                                          + psi_h( z0h(m)  / ol_m ) )                        &
+                                          / ( ln_z_z0(m)  - psi_m( z_mo(m) / ol_m )          &
+                                                          + psi_m( z0(m)   / ol_m ) )**2
+!
+!--       Calculate df/dL.
+          f_d_ol = ( - ( z_mo(m) / ol_u ) * ( ln_z_z0h(m) - psi_h( z_mo(m) / ol_u )          &
+                                                          + psi_h( z0h(m)  / ol_u ) )        &
+                                          / ( ln_z_z0(m)  - psi_m( z_mo(m) / ol_u )          &
+                                                          + psi_m( z0(m)   / ol_u ) )**2     &
+                     + ( z_mo(m) / ol_l ) * ( ln_z_z0h(m) - psi_h( z_mo(m) / ol_l )          &
+                                                          + psi_h( z0h(m)  / ol_l ) )        &
+                                          / ( ln_z_z0(m)  - psi_m( z_mo(m) / ol_l )          &
+                                                          + psi_m( z0(m)   / ol_l ) )**2     &
+                   ) / ( ol_u - ol_l )
+       ELSE
+!
+!--       Calculate f = Ri - 1 /[...]^3 = 0.
+          f = rib(m) - ( z_mo(m) / ol_m ) /                                                  &
+                       ( ln_z_z0(m) - psi_m( z_mo(m) / ol_m ) + psi_m( z0(m) / ol_m ) )**3
+!
+!--       Calculate df/dL.
+          f_d_ol = ( - ( z_mo(m) / ol_u ) / ( ln_z_z0(m) - psi_m( z_mo(m) / ol_u )           &
+                                                         + psi_m( z0(m)   / ol_u ) )**3      &
+                   + ( z_mo(m) / ol_l ) / ( ln_z_z0(m) - psi_m( z_mo(m) / ol_l )             &
+                                                   + psi_m( z0(m)   / ol_l ) )**3            &
+                 ) / ( ol_u - ol_l )
+       ENDIF
+!
+!--    Calculate new L.
+       ol(m) = ol_m - f / f_d_ol
+!
+!--    Ensure that the bulk Richardson number and the Obukhov length have the same sign and
+!--    ensure convergence. If the sign is not the same, the above calculated Obukhov length
+!--    obviously overshooted to the opposite side, so the next iteration should start with
+!--    a smaller value.
+       IF ( ol(m) * ol_m < 0.0_wp )  ol(m) = ol_m * 0.5_wp
+!
+!--    In the deep neutral zone, set L to the maximum allowed value.
+       IF ( ABS( ol(m) ) > ol_max_in )  THEN
+          ol(m) = SIGN( ol_max_in, ol(m) )
+          EXIT
+       ENDIF
+!
+!--    Assure that Obukhov length does not become zero.
+       IF ( ABS( ol(m) ) < ol_min_in )  THEN
+          ol(m) = SIGN( ol_min_in, ol(m) )
+          EXIT
+       ENDIF
+!
+!--    Check for convergence.
+       IF ( ABS( ( ol(m) - ol_m ) /  ol(m) ) < ol_tol_in )  EXIT
+
+    ENDDO
+
+ END SUBROUTINE newton_ol_cache
 
 
 !--------------------------------------------------------------------------------------------------!
@@ -1080,7 +1118,7 @@
        !$OMP PARALLEL DO
        !$ACC PARALLEL LOOP GANG &
        !$ACC PRESENT(downward, drho_air_zw, k, koff, pt1, qsws, qv1, rib, shf, upward, uvw_abs, vpt1, z_mo) &
-       !$ACC DEFAULT(NONE) IF(enable_openacc)
+       !$ACC IF(enable_openacc)
        DO  m = 1, ns
           rib(m) = -g * z_mo(m) *                                                                  &
                    ( ( 1.0_wp + 0.61_wp * qv1(m) ) * shf(m) + 0.61_wp * pt1(m) * qsws(m) ) /       &
@@ -1095,7 +1133,7 @@
        !$OMP PARALLEL DO
        !$ACC PARALLEL LOOP &
        !$ACC PRESENT(downward, drho_air_zw, k, koff, ns, pt1, rib, shf, upward, uvw_abs, z_mo) &
-       !$ACC DEFAULT(NONE) IF(enable_openacc)
+       !$ACC IF(enable_openacc)
        DO  m = 1, ns
           rib(m) = -g * z_mo(m) * shf(m) / ( uvw_abs(m)**3 * pt1(m) * kappa**2 + 1.0E-20_wp )
 !
@@ -1245,7 +1283,7 @@
     !$OMP PARALLEL DO PRIVATE( i, j, k )
     !$ACC PARALLEL LOOP PRIVATE(i, j, k) &
     !$ACC PRESENT(pt, q, surf) &
-    !$ACC DEFAULT(NONE) IF(enable_openacc)
+    !$ACC IF(enable_openacc)
     DO  m = 1, surf%ns
        i = surf%iref(m)
        j = surf%jref(m)
@@ -1296,7 +1334,7 @@
     !$OMP PARALLEL DO PRIVATE( i, j, k )
     !$ACC PARALLEL LOOP PRIVATE(i, j, k ) &
     !$ACC PRESENT(pt, surf) &
-    !$ACC DEFAULT(NONE) IF(enable_openacc)
+    !$ACC IF(enable_openacc)
     DO  m = 1, surf%ns
        i = surf%i(m) + surf%ioff(m)
        j = surf%j(m) + surf%joff(m)
@@ -1319,7 +1357,7 @@
     !$OMP PARALLEL DO PRIVATE( i, j, k )
     !$ACC PARALLEL LOOP PRIVATE(i, j, k ) &
     !$ACC PRESENT(q, surf, surf%ns, surf%i, surf%ioff, surf%j, surf%joff, surf%k, surf%koff, surf%q_surface) &
-    !$ACC DEFAULT(NONE) IF(enable_openacc)
+    !$ACC IF(enable_openacc)
     DO  m = 1, surf%ns
        i = surf%i(m) + surf%ioff(m)
        j = surf%j(m) + surf%joff(m)
@@ -1343,7 +1381,7 @@
     !$OMP PARALLEL DO PRIVATE( i, j, k )
     !$ACC PARALLEL LOOP PRIVATE(i, j, k ) &
     !$ACC PRESENT(surf, surf%ns, surf%i, surf%ioff, surf%j, surf%joff, surf%k, surf%koff, surf%vpt_surface, vpt) &
-    !$ACC DEFAULT(NONE) IF(enable_openacc)
+    !$ACC IF(enable_openacc)
     DO  m = 1, surf%ns
        i = surf%i(m) + surf%ioff(m)
        j = surf%j(m) + surf%joff(m)
@@ -1376,7 +1414,7 @@
 
        !$OMP PARALLEL DO PRIVATE( k, k_off )
        !$ACC PARALLEL LOOP PRIVATE( k, k_off ) &
-       !$ACC PRESENT( surf, drho_air_zw) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT( surf, drho_air_zw) IF(enable_openacc)
        DO  m = 1, surf%ns
           k = surf%k(m)
           k_off = surf%koff(m)
@@ -1466,7 +1504,7 @@
           !$OMP PARALLEL DO PRIVATE( k, k_off )
           !$ACC PARALLEL LOOP GANG &
           !$ACC PRESENT(drho_air_zw, surf, surf%consider_stability, surf%k, surf%koff, surf%ns, surf%qs, surf%qsws, surf%us) &
-          !$ACC DEFAULT(NONE) IF(enable_openacc)
+          !$ACC IF(enable_openacc)
           DO  m = 1, surf%ns
              k = surf%k(m)
              k_off = surf%koff(m)
@@ -1695,7 +1733,7 @@
 !-- Compute u'w'
     !$OMP PARALLEL DO PRIVATE( i, j, k, k_off, k_surf, z_mo, u_comp, denom )
     !$ACC PARALLEL LOOP PRIVATE(i, j, k, k_off, k_surf, z_mo, u_comp, denom ) &
-    !$ACC PRESENT(surf, u, rho_air_zw) PRESENT(us_tmp) DEFAULT(NONE) IF(enable_openacc)
+    !$ACC PRESENT(surf, u, rho_air_zw) PRESENT(us_tmp) IF(enable_openacc)
     DO  m = 1, surf%ns
        i = surf%iref(m)
        j = surf%jref(m)
@@ -1755,7 +1793,7 @@
 !-- Compute v'w'
     !$OMP PARALLEL DO PRIVATE( i, j, k, k_off, k_surf, z_mo, v_comp, denom )
     !$ACC PARALLEL LOOP PRIVATE(i, j, k, k_off, k_surf, z_mo, v_comp, denom ) &
-    !$ACC PRESENT(surf, v, rho_air_zw) PRESENT(us_tmp) DEFAULT(NONE) IF(enable_openacc)
+    !$ACC PRESENT(surf, v, rho_air_zw) PRESENT(us_tmp) IF(enable_openacc)
     DO  m = 1, surf%ns
        i = surf%iref(m)
        j = surf%jref(m)
@@ -1812,7 +1850,7 @@
     !$ACC PARALLEL LOOP GANG &
     !$ACC PRIVATE(i, j, k) &
     !$ACC PRESENT(surf, surf%iref, surf%jref, surf%kref, surf%ln_z_z0, surf%northward, surf%ns, surf%n_eff, surf%southward, surf%usvs, surf%us_uvgrid, u) &
-    !$ACC DEFAULT(NONE) IF(enable_openacc)
+    !$ACC IF(enable_openacc)
     DO  m = 1, surf%ns
        i = surf%iref(m)
        j = surf%jref(m)
@@ -1848,7 +1886,7 @@
     !$ACC PARALLEL LOOP GANG &
     !$ACC PRIVATE(i, j, k) &
     !$ACC PRESENT(surf, surf%eastward, surf%iref, surf%jref, surf%kref, surf%ln_z_z0, surf%ns, surf%n_eff, surf%us_uvgrid, surf%vsus, surf%westward, v) &
-    !$ACC DEFAULT(NONE) IF(enable_openacc)
+    !$ACC IF(enable_openacc)
     DO  m = 1, surf%ns
        i = surf%iref(m)
        j = surf%jref(m)
@@ -1879,7 +1917,7 @@
     !$ACC PARALLEL LOOP GANG &
     !$ACC PRIVATE(i, j, k) &
     !$ACC PRESENT(surf, surf%eastward, surf%iref, surf%jref, surf%kref, surf%ln_z_z0, surf%northward, surf%ns, surf%southward, surf%n_eff, surf%us_wgrid, surf%westward, surf%wsus_wsvs, w) &
-    !$ACC DEFAULT(NONE) IF(enable_openacc)
+    !$ACC IF(enable_openacc)
     DO  m = 1, surf%ns
        i = surf%iref(m)
        j = surf%jref(m)
@@ -1924,7 +1962,7 @@
     !$ACC PRESENT(surf, surf%downward, surf%eastward, surf%iref, surf%jref, surf%kref, surf%ln_z_z0) &
     !$ACC PRESENT(surf%mom_flux_tke, surf%ns, surf%northward, surf%southward, surf%tke_production) &
     !$ACC PRESENT(surf%upward, surf%us, surf%westward, u, v, w) &
-    !$ACC DEFAULT(NONE) IF(enable_openacc)
+    !$ACC IF(enable_openacc)
     DO  m = 1, surf%ns
        i = surf%iref(m)
        j = surf%jref(m)

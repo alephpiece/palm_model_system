@@ -92,7 +92,7 @@
           !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
           !$ACC PRESENT(var) &
           !$ACC PRESENT(ref_state) &
-          !$ACC PRESENT(tend) DEFAULT(NONE) IF(enable_openacc)
+          !$ACC PRESENT(tend) IF(enable_openacc)
           DO  i = nxl, nxr
              DO  j = nys, nyn
                 DO  k = nzb+1, nzt-1

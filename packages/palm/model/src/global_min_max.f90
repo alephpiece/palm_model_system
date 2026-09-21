@@ -173,7 +173,7 @@
 #if defined( _OPENACC )
        red = 0.0_wp
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
-       !$ACC PRESENT(ar) COPY(red) REDUCTION(MAX: red) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(ar) COPY(red) REDUCTION(MAX: red) IF(enable_openacc)
        DO  k = k1, k2
           DO  j = j1, j2
              DO  i = i1, i2
@@ -190,7 +190,7 @@
        count_eq = 0
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
        !$ACC PRESENT(ar) COPY(fmax_ijk_l(1:3), count_eq) &
-       !$ACC REDUCTION(+:count_eq) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC REDUCTION(+:count_eq) IF(enable_openacc)
        DO  k = k1, k2
           DO  j = j1, j2
              DO  i = i1, i2

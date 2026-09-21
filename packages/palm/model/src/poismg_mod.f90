@@ -258,25 +258,25 @@
 
 !
 !-- Set bottom and top boundary conditions.
-    !$ACC KERNELS PRESENT(d) DEFAULT(NONE) IF(enable_openacc)
+    !$ACC KERNELS PRESENT(d) IF(enable_openacc)
     d(nzb,:,:) = d(nzb+1,:,:)
     !$ACC END KERNELS
 
     IF ( ibc_p_t == 1 ) THEN
-       !$ACC KERNELS PRESENT(d) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC KERNELS PRESENT(d) IF(enable_openacc)
        d(nzt+1,:,: ) = d(nzt,:,:)
        !$ACC END KERNELS
     ENDIF
 !
 !-- Set lateral boundary conditions in non-cyclic case.
     IF ( .NOT. bc_lr_cyc )  THEN
-       !$ACC KERNELS PRESENT(d) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC KERNELS PRESENT(d) IF(enable_openacc)
        IF ( bc_dirichlet_l  .OR.  bc_radiation_l )  d(:,:,nxl-1) = d(:,:,nxl)
        IF ( bc_dirichlet_r  .OR.  bc_radiation_r )  d(:,:,nxr+1) = d(:,:,nxr)
        !$ACC END KERNELS
     ENDIF
     IF ( .NOT. bc_ns_cyc )  THEN
-       !$ACC KERNELS PRESENT(d) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC KERNELS PRESENT(d) IF(enable_openacc)
        IF ( bc_dirichlet_n  .OR.  bc_radiation_n )  d(:,nyn+1,:) = d(:,nyn,:)
        IF ( bc_dirichlet_s  .OR.  bc_radiation_s )  d(:,nys-1,:) = d(:,nys,:)
        !$ACC END KERNELS

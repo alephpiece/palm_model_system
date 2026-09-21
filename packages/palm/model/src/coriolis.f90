@@ -105,7 +105,7 @@
           !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k, flag) &
           !$ACC PRESENT(topo_flags) &
           !$ACC PRESENT(v, w, vg) &
-          !$ACC PRESENT(tend) DEFAULT(NONE) IF(enable_openacc)
+          !$ACC PRESENT(tend) IF(enable_openacc)
           DO  i = nxlu, nxr
              DO  j = nys, nyn
                 DO  k = nzb+1, nzt
@@ -129,7 +129,7 @@
           !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k, flag) &
           !$ACC PRESENT(topo_flags) &
           !$ACC PRESENT(u, w, ug) &
-          !$ACC PRESENT(tend) DEFAULT(NONE) IF(enable_openacc)
+          !$ACC PRESENT(tend) IF(enable_openacc)
           DO  i = nxl, nxr
              DO  j = nysv, nyn
                 DO  k = nzb+1, nzt
@@ -153,7 +153,7 @@
           !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k, flag) &
           !$ACC PRESENT(topo_flags) &
           !$ACC PRESENT(u, v) &
-          !$ACC PRESENT(tend) DEFAULT(NONE) IF(enable_openacc)
+          !$ACC PRESENT(tend) IF(enable_openacc)
           DO  i = nxl, nxr
              DO  j = nys, nyn
                 DO  k = nzb+1, nzt
