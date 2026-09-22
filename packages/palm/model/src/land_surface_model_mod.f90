@@ -4515,8 +4515,11 @@ END SUBROUTINE lsm_recompute_outgoing_radiation
 !--       additional check.
           !$OMP PARALLEL DO PRIVATE (m, k) SCHEDULE (STATIC)
 !NEC$ nointerchange
-          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(2) DEFAULT(PRESENT) IF(enable_openacc)
+!
+!--       root_extr is shared per level; retain the CPU last-surface selection.
+          !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(enable_openacc)
           DO  k = nzb_soil, nzt_soil
+             !$ACC LOOP SEQ
              DO  m = 1, surf_lsm%ns
                 IF ( .NOT. surf_lsm%water_surface(m) )  THEN
                    IF ( m_total(m) > 0.0_wp )  THEN

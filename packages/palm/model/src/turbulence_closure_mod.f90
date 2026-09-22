@@ -2726,7 +2726,9 @@
 !--          facing surfaces. First, for default surfaces.
              surf_s = surf_def%start_index(j,i)
              surf_e = surf_def%end_index(j,i)
-             !$ACC LOOP PRIVATE(m, k, kref, usvs, wsvs, vsus, wsus, km_neutral)
+!
+!--          Multiple surface elements can overwrite the same gradient(k).
+             !$ACC LOOP SEQ PRIVATE(m, k, kref, usvs, wsvs, vsus, wsus, km_neutral)
              DO  m = surf_s, surf_e
                 k    = surf_def%k(m)
                 kref = MERGE( k+1, k-1, surf_def%upward(m) )
@@ -2786,7 +2788,7 @@
 !--          Natural surfaces
              surf_s = surf_lsm%start_index(j,i)
              surf_e = surf_lsm%end_index(j,i)
-             !$ACC LOOP PRIVATE(m, k, kref, usvs, wsvs, vsus, wsus, km_neutral)
+             !$ACC LOOP SEQ PRIVATE(m, k, kref, usvs, wsvs, vsus, wsus, km_neutral)
              DO  m = surf_s, surf_e
                 k    = surf_lsm%k(m)
                 kref = MERGE( k+1, k-1, surf_lsm%upward(m)  )
@@ -2844,7 +2846,7 @@
 !--          Urban surfaces
              surf_s = surf_usm%start_index(j,i)
              surf_e = surf_usm%end_index(j,i)
-             !$ACC LOOP PRIVATE(m, k, kref, usvs, wsvs, vsus, wsus, km_neutral)
+             !$ACC LOOP SEQ PRIVATE(m, k, kref, usvs, wsvs, vsus, wsus, km_neutral)
              DO  m = surf_s, surf_e
                 k    = surf_usm%k(m)
                 kref = MERGE( k+1, k-1, surf_usm%upward(m) )
@@ -4765,7 +4767,7 @@
 !--    Note, at corners the boundary condition for km is overdetermined and the boundary value
 !--    depends on the order how surfaces are accessed.
        !$OMP PARALLEL DO PRIVATE(i,j,k)
-       !$ACC PARALLEL LOOP PRIVATE(i,j,k) &
+       !$ACC PARALLEL LOOP SEQ PRIVATE(i,j,k) &
        !$ACC PRESENT(bc_hv, kh, km) IF(enable_openacc)
        DO  m = 1, bc_hv%ns
           i = bc_hv%i(m)
