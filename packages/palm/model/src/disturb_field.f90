@@ -205,6 +205,8 @@
 !-- Remove perturbations below topography (including one gridpoint above it in order to allow for
 !-- larger timesteps at the beginning of the simulation (diffusion criterion))
     IF ( TRIM( topography ) /= 'flat' )  THEN
+       !$ACC PARALLEL LOOP COLLAPSE(3) PRESENT(dist1) COPYIN(topo_flags) &
+       !$ACC FIRSTPRIVATE(flag_nr) IF(enable_openacc)
        DO  i = nxlg, nxrg
           DO  j = nysg, nyng
              DO  k = nzb, nzb_max
@@ -212,6 +214,7 @@
              ENDDO
           ENDDO
        ENDDO
+       !$ACC END PARALLEL LOOP
     ENDIF
 
 !

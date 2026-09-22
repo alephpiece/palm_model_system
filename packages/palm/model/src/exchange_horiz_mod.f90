@@ -273,7 +273,14 @@
           req(1:4)  = 0
           req_count = 0
 
+!
+!--       DTK 26.04 conditional OpenACC host loops can lose buffer writes.
+!--       Use the existing MPI datatype path for host-resident arrays.
+#if defined( _OPENACC )
+          IF ( use_contiguous_buffer .AND. lacc )  THEN
+#else
           IF ( use_contiguous_buffer )  THEN
+#endif
 
 !
 !--          Allocate buffers for sending / receiving ghost layer data
@@ -680,10 +687,8 @@
     INTEGER(iwp) ::  bufsize       !< size of buffer for sending/receiving contiguous data
     INTEGER(iwp) ::  communicator  !< communicator that is used as argument in MPI calls
     INTEGER(iwp) ::  i             !< loop index
-    INTEGER(iwp) ::  ii            !< loop index
     INTEGER(iwp) ::  il            !< loop index
     INTEGER(iwp) ::  j             !< loop index
-    INTEGER(iwp) ::  jj            !< loop index
     INTEGER(iwp) ::  js            !< loop index
     INTEGER(iwp) ::  k             !< loop index
     INTEGER(iwp) ::  kb            !< bottom loop index
@@ -776,54 +781,46 @@
 
 !
 !--    Pack data for sending south/north boundary.
-       ii = -1
        il = ileft_for_nys_send(1,color)
        kb = kbottom_for_nys_send(1,color)
        kt = ktop_for_nys_send(1,color)
        !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
        DO  i = il, nxr, 2
-          ii = ii + 1
           DO  k = kb, kt, ki
-             sendbuf1(k,ii) = ar(k,nys,i)
+             sendbuf1(k,(i-il)/2) = ar(k,nys,i)
           ENDDO
        ENDDO
        !$ACC END PARALLEL LOOP
 
-       ii = -1
        il = ileft_for_nyn_send(1,color)
        kb = kbottom_for_nyn_send(1,color)
        kt = ktop_for_nyn_send(1,color)
        !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
        DO  i = il, nxr, 2
-          ii = ii + 1
           DO  k = kb, kt, ki
-             sendbuf2(k,ii) = ar(k,nyn,i)
+             sendbuf2(k,(i-il)/2) = ar(k,nyn,i)
           ENDDO
        ENDDO
        !$ACC END PARALLEL LOOP
 
-       ii = -1
        il = ileft_for_nys_send(2,color)
        kb = kbottom_for_nys_send(2,color)
        kt = ktop_for_nys_send(2,color)
        !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
        DO  i = il, nxr, 2
-          ii = ii + 1
           DO  k = kb, kt, ki
-             sendbuf1(k,ii) = ar(k,nys,i)
+             sendbuf1(k,(i-il)/2) = ar(k,nys,i)
           ENDDO
        ENDDO
        !$ACC END PARALLEL LOOP
 
-       ii = -1
        il = ileft_for_nyn_send(2,color)
        kb = kbottom_for_nyn_send(2,color)
        kt = ktop_for_nyn_send(2,color)
        !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
        DO  i = il, nxr, 2
-          ii = ii + 1
           DO  k = kb, kt, ki
-             sendbuf2(k,ii) = ar(k,nyn,i)
+             sendbuf2(k,(i-il)/2) = ar(k,nyn,i)
           ENDDO
        ENDDO
        !$ACC END PARALLEL LOOP
@@ -857,28 +854,24 @@
 !--    Unpack received south/north boundary data.
        IF ( .NOT. bc_dirichlet_n  .AND.  .NOT. bc_radiation_n )  THEN
 
-          ii = -1
           il = ileft_for_nyn_recv(1,color)
           kb = kbottom_for_nyn_recv(1,color)
           kt = ktop_for_nyn_recv(1,color)
           !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
           DO  i = il, nxr, 2
-             ii = ii + 1
              DO  k = kb, kt, ki
-                ar(k,nyn+1,i) = recvbuf1(k,ii)
+                ar(k,nyn+1,i) = recvbuf1(k,(i-il)/2)
              ENDDO
           ENDDO
           !$ACC END PARALLEL LOOP
 
-          ii = -1
           il = ileft_for_nyn_recv(2,color)
           kb = kbottom_for_nyn_recv(2,color)
           kt = ktop_for_nyn_recv(2,color)
           !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
           DO  i = il, nxr, 2
-             ii = ii + 1
              DO  k = kb, kt, ki
-                ar(k,nyn+1,i) = recvbuf1(k,ii)
+                ar(k,nyn+1,i) = recvbuf1(k,(i-il)/2)
                 ENDDO
           ENDDO
           !$ACC END PARALLEL LOOP
@@ -887,28 +880,24 @@
 
        IF ( .NOT. bc_dirichlet_s  .AND.  .NOT. bc_radiation_s )  THEN
 
-          ii = -1
           il = ileft_for_nys_recv(1,color)
           kb = kbottom_for_nys_recv(1,color)
           kt = ktop_for_nys_recv(1,color)
           !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
           DO  i = il, nxr, 2
-             ii = ii + 1
              DO  k = kb, kt, ki
-                ar(k,nys-1,i) = recvbuf2(k,ii)
+                ar(k,nys-1,i) = recvbuf2(k,(i-il)/2)
              ENDDO
           ENDDO
           !$ACC END PARALLEL LOOP
 
-          ii = -1
           il = ileft_for_nys_recv(2,color)
           kb = kbottom_for_nys_recv(2,color)
           kt = ktop_for_nys_recv(2,color)
           !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
           DO  i = il, nxr, 2
-             ii = ii + 1
              DO  k = kb, kt, ki
-                ar(k,nys-1,i) = recvbuf2(k,ii)
+                ar(k,nys-1,i) = recvbuf2(k,(i-il)/2)
              ENDDO
           ENDDO
           !$ACC END PARALLEL LOOP
@@ -968,54 +957,46 @@
 
 !
 !--    Pack data for sending left/right boundary.
-       jj = -2
        js = jsouth_for_nxl_send(1,color)
        kb = kbottom_for_nxl_send(1,color)
        kt = ktop_for_nxl_send(1,color)
        !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
        DO  j = js, nyn+1, 2
-          jj = jj + 1
           DO  k = kb, kt, ki
-             sendbuf1(k,jj) = ar(k,j,nxl)
+             sendbuf1(k,(j-js)/2-1) = ar(k,j,nxl)
           ENDDO
        ENDDO
        !$ACC END PARALLEL LOOP
 
-       jj = -2
        js = jsouth_for_nxr_send(1,color)
        kb = kbottom_for_nxr_send(1,color)
        kt = ktop_for_nxr_send(1,color)
        !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
        DO  j = js, nyn+1, 2
-          jj = jj + 1
           DO  k = kb, kt, ki
-             sendbuf2(k,jj) = ar(k,j,nxr)
+             sendbuf2(k,(j-js)/2-1) = ar(k,j,nxr)
           ENDDO
        ENDDO
        !$ACC END PARALLEL LOOP
 
-       jj = -2
        js = jsouth_for_nxl_send(2,color)
        kb = kbottom_for_nxl_send(2,color)
        kt = ktop_for_nxl_send(2,color)
        !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
        DO  j = js, nyn+1, 2
-          jj = jj + 1
           DO  k = kb, kt, ki
-             sendbuf1(k,jj) = ar(k,j,nxl)
+             sendbuf1(k,(j-js)/2-1) = ar(k,j,nxl)
           ENDDO
        ENDDO
        !$ACC END PARALLEL LOOP
 
-       jj = -2
        js = jsouth_for_nxr_send(2,color)
        kb = kbottom_for_nxr_send(2,color)
        kt = ktop_for_nxr_send(2,color)
        !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
        DO  j = js, nyn+1, 2
-          jj = jj + 1
           DO  k = kb, kt, ki
-             sendbuf2(k,jj) = ar(k,j,nxr)
+             sendbuf2(k,(j-js)/2-1) = ar(k,j,nxr)
           ENDDO
        ENDDO
        !$ACC END PARALLEL LOOP
@@ -1049,28 +1030,24 @@
 !--    Unpack received left/right boundary data.
        IF ( .NOT. bc_dirichlet_r  .AND.  .NOT. bc_radiation_r )  THEN
 
-          jj = -2
           js = jsouth_for_nxr_recv(1,color)
           kb = kbottom_for_nxr_recv(1,color)
          kt = ktop_for_nxr_recv(1,color)
           !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
           DO  j = js, nyn+1, 2
-             jj = jj + 1
              DO  k = kb, kt, ki
-               ar(k,j,nxr+1) = recvbuf1(k,jj)
+               ar(k,j,nxr+1) = recvbuf1(k,(j-js)/2-1)
              ENDDO
           ENDDO
           !$ACC END PARALLEL LOOP
 
-          jj = -2
           js = jsouth_for_nxr_recv(2,color)
           kb = kbottom_for_nxr_recv(2,color)
           kt = ktop_for_nxr_recv(2,color)
          !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
           DO  j = js, nyn+1, 2
-             jj = jj + 1
              DO  k = kb, kt, ki
-                ar(k,j,nxr+1) = recvbuf1(k,jj)
+                ar(k,j,nxr+1) = recvbuf1(k,(j-js)/2-1)
              ENDDO
           ENDDO
           !$ACC END PARALLEL LOOP
@@ -1079,28 +1056,24 @@
 
        IF ( .NOT. bc_dirichlet_l  .AND.  .NOT. bc_radiation_l )  THEN
 
-          jj = -2
           js = jsouth_for_nxl_recv(1,color)
           kb = kbottom_for_nxl_recv(1,color)
           kt = ktop_for_nxl_recv(1,color)
           !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
           DO  j = js, nyn+1, 2
-             jj = jj + 1
              DO  k = kb, kt, ki
-                ar(k,j,nxl-1) = recvbuf2(k,jj)
+                ar(k,j,nxl-1) = recvbuf2(k,(j-js)/2-1)
              ENDDO
           ENDDO
           !$ACC END PARALLEL LOOP
 
-          jj = -2
           js = jsouth_for_nxl_recv(2,color)
           kb = kbottom_for_nxl_recv(2,color)
           kt = ktop_for_nxl_recv(2,color)
           !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
           DO  j = js, nyn+1, 2
-             jj = jj + 1
              DO  k = kb, kt, ki
-                ar(k,j,nxl-1) = recvbuf2(k,jj)
+                ar(k,j,nxl-1) = recvbuf2(k,(j-js)/2-1)
              ENDDO
           ENDDO
           !$ACC END PARALLEL LOOP

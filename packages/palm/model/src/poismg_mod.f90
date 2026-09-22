@@ -995,8 +995,8 @@
              ENDIF
 !
 !--          Without unrolling of loops, no cache optimization.
-!--          Loop bounds are evaluated on the host; skip UPDATE DEVICE of nxl_mg/nys_mg
-!--          (was a major GPU sync bottleneck in redblack_no_unroll_f).
+!--          Synchronize adjusted lower bounds before device evaluation of the loop limits.
+             !$ACC UPDATE DEVICE(nxl_mg,nys_mg) IF(enable_openacc)
 !             WRITE(9,*) '*** loop 1:'
 !             WRITE(9,'(A,I3,A,I3,A)') 'i = ', nxl_mg(l), ', ', nxr_mg(l), ', 2'
 !             WRITE(9,'(A,I3,A,I3,A)') 'j = ', nys_mg(l) + 2 - color, ', ', nyn_mg(l), ', 2'
@@ -1042,6 +1042,7 @@
                 ENDIF
              ENDIF
 
+             !$ACC UPDATE DEVICE(nxl_mg,nys_mg) IF(enable_openacc)
 !             WRITE(9,*) '*** loop 2:'
 !             WRITE(9,'(A,I3,A,I3,A)') 'i = ', nxl_mg(l)+1, ', ', nxr_mg(l), ', 2'
 !             WRITE(9,'(A,I3,A,I3,A)') 'j = ', nys_mg(l) + (color-1), ', ', nyn_mg(l), ', 2'
@@ -1086,6 +1087,7 @@
                 ENDIF
              ENDIF
 
+             !$ACC UPDATE DEVICE(nxl_mg,nys_mg) IF(enable_openacc)
 !             WRITE(9,*) '*** loop 3:'
 !             WRITE(9,'(A,I3,A,I3,A)') 'i = ', nxl_mg(l), ', ', nxr_mg(l), ', 2'
 !             WRITE(9,'(A,I3,A,I3,A)') 'j = ', nys_mg(l) + (color-1), ', ', nyn_mg(l), ', 2'
@@ -1130,6 +1132,7 @@
                 ENDIF
              ENDIF
 
+             !$ACC UPDATE DEVICE(nxl_mg,nys_mg) IF(enable_openacc)
 !             WRITE(9,*) '*** loop 4:'
 !             WRITE(9,'(A,I3,A,I3,A)') 'i = ', nxl_mg(l)+1, ', ', nxr_mg(l), ', 2'
 !             WRITE(9,'(A,I3,A,I3,A)') 'j = ', nys_mg(l) + 2 - color, ', ', nyn_mg(l), ', 2'

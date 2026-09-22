@@ -1761,8 +1761,8 @@
                       local_2d = local_2d / ( ny + 1.0_wp )
                       !$ACC END KERNELS
 
-                      DEALLOCATE( local_2d_l )
                       !$ACC END DATA
+                      DEALLOCATE( local_2d_l )
 
                    ELSE
 !
@@ -1993,8 +1993,8 @@
                       local_2d = local_2d / ( nx + 1.0_wp )
                       !$ACC END KERNELS
 
-                      DEALLOCATE( local_2d_l )
                       !$ACC END DATA
+                      DEALLOCATE( local_2d_l )
 
                    ELSE
 !
@@ -2312,6 +2312,7 @@
 
 !
 !-- Deallocate temporary arrays.
+    !$ACC END DATA
     DEALLOCATE( local_pf, local_2d )
     IF ( ALLOCATED( level_z ) )  DEALLOCATE( level_z )
     IF ( netcdf_data_format > 4 )  THEN
@@ -2323,7 +2324,6 @@
        DEALLOCATE( total_2d )
     ENDIF
 #endif
-    !$ACC END DATA
 
 !
 !-- Close plot output file.

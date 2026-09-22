@@ -836,8 +836,8 @@
              CALL netcdf_handle_error( 'data_output_3d', 386 )
              CALL cpu_log( log_point_s(58), 'output_3d 1:nx+1 PUT', 'stop' )
 
-             DEALLOCATE( f_inv, tr_out )
              !$ACC END DATA
+             DEALLOCATE( f_inv, tr_out )
 
           ELSE
 !
@@ -877,8 +877,8 @@
 
 !
 !--    Deallocate temporary array
-       DEALLOCATE ( local_pf )
        !$ACC END DATA
+       DEALLOCATE ( local_pf )
 
     ENDDO
 
