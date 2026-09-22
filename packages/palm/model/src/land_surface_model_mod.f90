@@ -733,7 +733,9 @@
     INTEGER(iwp) :: koff   !< offset index x-direction indicating location of soil grid point
     INTEGER(iwp) :: m      !< running index surface elements
 
-    !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) &
+!
+!-- Surface elements can share a soil point; retain the original overwrite order.
+    !$ACC PARALLEL LOOP SEQ DEFAULT(PRESENT) &
     !$ACC PRIVATE(i, j, k, ioff, joff, koff) IF(enable_openacc)
     DO  m = 1, surf_lsm%ns
        ioff = surf_lsm%ioff(m)
@@ -748,7 +750,7 @@
 !
 !-- In case of humidity, set boundary conditions also for q and vpt.
     IF ( humidity )  THEN
-       !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) &
+       !$ACC PARALLEL LOOP SEQ DEFAULT(PRESENT) &
        !$ACC PRIVATE(i, j, k, ioff, joff, koff) IF(enable_openacc)
        DO  m = 1, surf_lsm%ns
           ioff = surf_lsm%ioff(m)
