@@ -154,7 +154,9 @@
 !--             First, for default-type surfaces - all orientations.
                 surf_s = surf_def%start_index(j,i)
                 surf_e = surf_def%end_index(j,i)
-                !$ACC LOOP PRIVATE(k, m)
+!
+!--             Surface elements may share k; preserve their flux overwrite order.
+                !$ACC LOOP SEQ PRIVATE(k, m)
                 DO  m = surf_s, surf_e
                    k         = surf_def%k(m)
                    flux_tmp  = s_flux_def(m) * surf_def%n_eff(m)
@@ -169,7 +171,7 @@
 !--             Now, natural-type surfaces - all orientations.
                 surf_s = surf_lsm%start_index(j,i)
                 surf_e = surf_lsm%end_index(j,i)
-                !$ACC LOOP PRIVATE(k, m)
+                !$ACC LOOP SEQ PRIVATE(k, m)
                 DO  m = surf_s, surf_e
                    k         = surf_lsm%k(m)
                    flux_tmp  = s_flux_lsm(m) * surf_lsm%n_eff(m)
@@ -184,7 +186,7 @@
 !--             Now, for urban-type surfaces - all orientations.
                 surf_s = surf_usm%start_index(j,i)
                 surf_e = surf_usm%end_index(j,i)
-                !$ACC LOOP PRIVATE(k, m)
+                !$ACC LOOP SEQ PRIVATE(k, m)
                 DO  m = surf_s, surf_e
                    k         = surf_usm%k(m)
                    flux_tmp  = s_flux_usm(m) * surf_usm%n_eff(m)
@@ -201,7 +203,7 @@
              IF ( use_top_fluxes )  THEN
                 surf_s = surf_top%start_index(j,i)
                 surf_e = surf_top%end_index(j,i)
-                !$ACC LOOP PRIVATE(k, m)
+                !$ACC LOOP SEQ PRIVATE(k, m)
                 DO  m = surf_s, surf_e
                    k         = surf_top%k(m)
                    flux_t(k) = s_flux_t(m)

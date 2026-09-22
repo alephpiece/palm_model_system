@@ -190,7 +190,9 @@
 !--                Default-type surfaces
                    surf_s = surf_def%start_index(j,i)
                    surf_e = surf_def%end_index(j,i)
-                   !$ACC LOOP PRIVATE(k, m)
+!
+!--             Surface elements may share k; preserve their flux overwrite order.
+                   !$ACC LOOP SEQ PRIVATE(k, m)
                    DO  m = surf_s, surf_e
                       k           = surf_def%k(m)
 
@@ -203,7 +205,7 @@
 !--                Natural-type surfaces
                    surf_s = surf_lsm%start_index(j,i)
                    surf_e = surf_lsm%end_index(j,i)
-                   !$ACC LOOP PRIVATE(k, m)
+                   !$ACC LOOP SEQ PRIVATE(k, m)
                    DO  m = surf_s, surf_e
                       k           = surf_lsm%k(m)
 
@@ -216,7 +218,7 @@
 !--                Urban-type surfaces
                    surf_s = surf_usm%start_index(j,i)
                    surf_e = surf_usm%end_index(j,i)
-                   !$ACC LOOP PRIVATE(k, m)
+                   !$ACC LOOP SEQ PRIVATE(k, m)
                    DO  m = surf_s, surf_e
                       k           = surf_usm%k(m)
 
@@ -248,7 +250,7 @@
              THEN
                 surf_s = surf_top%start_index(j,i)
                 surf_e = surf_top%end_index(j,i)
-                !$ACC LOOP PRIVATE(k, m)
+                !$ACC LOOP SEQ PRIVATE(k, m)
                 DO  m = surf_s, surf_e
                    k         = surf_top%k(m)
                    flux_t(k) = surf_top%usws(m)
