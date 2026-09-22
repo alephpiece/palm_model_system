@@ -836,7 +836,19 @@
                 level_z(nzb+1) = zu(nzb+1)
 
              CASE ( 'qsws*_xy' )        ! 2d-array
+!
+!--             Surface output is assembled on the host in surface-list order.
+                !$ACC UPDATE SELF(local_pf) IF(enable_openacc)
                 IF ( av == 0 ) THEN
+                   IF ( surf_def%ns > 0 )  THEN
+                      !$ACC UPDATE SELF(surf_def%qsws) IF(enable_openacc)
+                   ENDIF
+                   IF ( surf_lsm%ns > 0 )  THEN
+                      !$ACC UPDATE SELF(surf_lsm%qsws_agg) IF(enable_openacc)
+                   ENDIF
+                   IF ( surf_usm%ns > 0 )  THEN
+                      !$ACC UPDATE SELF(surf_usm%qsws) IF(enable_openacc)
+                   ENDIF
 !
 !--                In case of default surfaces, clean-up flux by density.
 !--                In case of land-surfaces, convert fluxes into dynamic units.
@@ -873,6 +885,7 @@
                       ENDDO
                    ENDDO
                 ENDIF
+                !$ACC UPDATE DEVICE(local_pf) IF(enable_openacc)
                 resorted = .TRUE.
                 two_d = .TRUE.
                 level_z(nzb+1) = zu(nzb+1)
@@ -939,7 +952,19 @@
                 ENDIF
 
              CASE ( 'shf*_xy' )        ! 2d-array
+!
+!--             Surface output is assembled on the host in surface-list order.
+                !$ACC UPDATE SELF(local_pf) IF(enable_openacc)
                 IF ( av == 0 ) THEN
+                   IF ( surf_def%ns > 0 )  THEN
+                      !$ACC UPDATE SELF(surf_def%shf) IF(enable_openacc)
+                   ENDIF
+                   IF ( surf_lsm%ns > 0 )  THEN
+                      !$ACC UPDATE SELF(surf_lsm%shf_agg) IF(enable_openacc)
+                   ENDIF
+                   IF ( surf_usm%ns > 0 )  THEN
+                      !$ACC UPDATE SELF(surf_usm%shf) IF(enable_openacc)
+                   ENDIF
 !
 !--                In case of default surfaces, clean-up flux by density.
 !--                In case of land- and urban-surfaces, convert fluxes into dynamic units.
@@ -976,6 +1001,7 @@
                       ENDDO
                    ENDDO
                 ENDIF
+                !$ACC UPDATE DEVICE(local_pf) IF(enable_openacc)
                 resorted = .TRUE.
                 two_d = .TRUE.
                 level_z(nzb+1) = zu(nzb+1)
@@ -1119,7 +1145,19 @@
                 level_z(nzb+1) = zu(nzb+1)
 
              CASE ( 'tsurf*_xy' )        ! 2d-array
+!
+!--             Surface output is assembled on the host in surface-list order.
+                !$ACC UPDATE SELF(local_pf) IF(enable_openacc)
                 IF ( av == 0 )  THEN
+                   IF ( surf_def%ns > 0 )  THEN
+                      !$ACC UPDATE SELF(surf_def%pt_surface) IF(enable_openacc)
+                   ENDIF
+                   IF ( surf_lsm%ns > 0 )  THEN
+                      !$ACC UPDATE SELF(surf_lsm%pt_surface) IF(enable_openacc)
+                   ENDIF
+                   IF ( surf_usm%ns > 0 )  THEN
+                      !$ACC UPDATE SELF(surf_usm%pt_surface) IF(enable_openacc)
+                   ENDIF
                    DO  m = 1, surf_def%ns
                       i = surf_def%i(m)
                       j = surf_def%j(m)
@@ -1149,6 +1187,7 @@
                       ENDDO
                    ENDDO
                 ENDIF
+                !$ACC UPDATE DEVICE(local_pf) IF(enable_openacc)
                 resorted       = .TRUE.
                 two_d          = .TRUE.
                 level_z(nzb+1) = zu(nzb+1)

@@ -817,8 +817,14 @@
 
              ALLOCATE( f_inv(nys:nyn,nxl:nxr_x_max,1:nz_x_max_diffnz) )
              ALLOCATE( tr_out(nx+1,nys:nyn,nzb_x_diffnz:nzt_x_diffnz) )
+#if defined( __cuda_fft )
              !$ACC DATA CREATE(f_inv, tr_out) IF(enable_openacc)
+#endif
 
+#if defined( _OPENACC ) && !defined( __cuda_fft )
+!--          Without CUDA FFT, the output transpose routines execute on the host.
+             !$ACC UPDATE SELF(local_pf) IF(enable_openacc)
+#endif
              CALL resort_for_zx( local_pf, f_inv, nzb_do, nzt_do )
 !
 !--          Do transposition for array where z is dimensioned (nzb_do:nzt_do).
@@ -827,7 +833,9 @@
 
              CALL cpu_log( log_point_s(58), 'output_3d 1:nx+1 PUT', 'start' )
              output_3d_file_size = output_3d_file_size + SIZE( tr_out )
+#if defined( __cuda_fft )
              !$ACC UPDATE HOST(tr_out) IF(enable_openacc)
+#endif
              nc_stat = NF90_PUT_VAR( id_set_3d(av), id_var_do3d(av,ivar),                          &
                                      tr_out(1:nx+1,nys:nyn,nzb_x_diffnz:nzt_x_diffnz),             &
                                      start = (/ 1, nys+1, nzb_x_diffnz, do3d_time_count(av) /),    &
@@ -836,7 +844,9 @@
              CALL netcdf_handle_error( 'data_output_3d', 386 )
              CALL cpu_log( log_point_s(58), 'output_3d 1:nx+1 PUT', 'stop' )
 
+#if defined( __cuda_fft )
              !$ACC END DATA
+#endif
              DEALLOCATE( f_inv, tr_out )
 
           ELSE
