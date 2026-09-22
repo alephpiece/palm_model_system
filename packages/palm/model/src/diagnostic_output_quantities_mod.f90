@@ -4846,6 +4846,9 @@ END SUBROUTINE calc_dir_10m
 !-- Calculate required size and allocate array do_all.
     do_all_size = SUM( do2d_no ) + SUM( do3d_no ) + SUM( domask_no(1:masks,:) )
     ALLOCATE( do_all(do_all_size) )
+!
+!-- Duplicate checks inspect the whole array; unused slots must remain blank.
+    do_all(:) = ' '
 
     ivar     = 1
     ivar_all = 1
