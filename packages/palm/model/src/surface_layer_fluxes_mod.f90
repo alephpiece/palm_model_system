@@ -955,7 +955,7 @@
 !
 !--       Assure that Obukhov length does not become zero.
           !$ACC PARALLEL LOOP &
-          !$ACC FIRSTPRIVATE(ns) PRESENT(surf, ol) IF(enable_openacc)
+          !$ACC PRESENT(surf, ol) IF(enable_openacc)
           DO  m = 1, surf%ns
              IF ( .NOT. convergence_reached(m) ) THEN
                 IF ( ABS( ol(m) ) < ol_min )  THEN

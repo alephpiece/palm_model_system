@@ -193,7 +193,7 @@
        red_for_position = red
        count_eq = 0
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
-       !$ACC PRESENT(ar) COPY(count_eq) &
+       !$ACC PRESENT(ar) &
        !$ACC REDUCTION(+:count_eq) IF(enable_openacc)
        DO  k = k1, k2
           DO  j = j1, j2
