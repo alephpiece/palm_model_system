@@ -206,7 +206,7 @@
 !--    One-dimensional decomposition along x, boundary values can be exchanged within the PE memory
        IF ( PRESENT( alternative_communicator ) )  THEN
           IF ( alternative_communicator == 1  .OR.  alternative_communicator == 3 )  THEN
-             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
+             !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
              DO  k = nzb, nzt+1
                 DO  j = 1, nbgp_local
                    DO  i = nxl-nbgp_local, nxr+nbgp_local
@@ -215,7 +215,7 @@
                 ENDDO
              ENDDO
              !$ACC END PARALLEL LOOP
-             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
+             !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
              DO  k = nzb, nzt+1
                 DO  j = 1, nbgp_local
                    DO  i = nxl-nbgp_local, nxr+nbgp_local
@@ -227,7 +227,7 @@
           ENDIF
        ELSE
           IF ( bc_ns_cyc )  THEN
-             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
+             !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
              DO  k = nzb, nzt+1
                 DO  j = 1, nbgp_local
                    DO  i = nxl-nbgp_local, nxr+nbgp_local
@@ -236,7 +236,7 @@
                 ENDDO
              ENDDO
              !$ACC END PARALLEL LOOP
-             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
+             !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
              DO  k = nzb, nzt+1
                 DO  j = 1, nbgp_local
                    DO  i = nxl-nbgp_local, nxr+nbgp_local
@@ -294,7 +294,7 @@
 
 !
 !--          Pack data for sending south boundary.
-             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
+             !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
              DO  i = nxl, nxr
                 DO  j = 1, nbgp_local
                    DO  k = nzb, nzt+1
@@ -305,7 +305,7 @@
              !$ACC END PARALLEL LOOP
 !
 !--          Pack data for sending north boundary.
-             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
+             !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
              DO  i = nxl, nxr
                 DO  j = 1, nbgp_local
                    DO  k = nzb, nzt+1
@@ -340,7 +340,7 @@
              CALL MPI_WAITALL( 4, req, wait_stat, ierr )
 !
 !--          Unpack received north boundary data
-             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
+             !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
              DO  i = nxl, nxr
                 DO  j = 1, nbgp_local
                    DO  k = nzb, nzt+1
@@ -351,7 +351,7 @@
              !$ACC END PARALLEL LOOP
 !
 !--          Unpack received south boundary data
-             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
+             !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
              DO  i = nxl, nxr
                 DO  j = 1, nbgp_local
                    DO  k = nzb, nzt+1
@@ -402,7 +402,7 @@
 !--    One-dimensional decomposition along y, boundary values can be exchanged within the PE memory.
        IF ( PRESENT( alternative_communicator ) )  THEN
           IF ( alternative_communicator <= 2 )  THEN
-             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
+             !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
              DO  i = 1, nbgp_local
                 DO  j = nys-nbgp_local, nyn+nbgp_local
                    DO  k = nzb, nzt+1
@@ -411,7 +411,7 @@
                 ENDDO
              ENDDO
              !$ACC END PARALLEL LOOP
-             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
+             !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
              DO  i = 1, nbgp_local
                 DO  j = nys-nbgp_local, nyn+nbgp_local
                    DO  k = nzb, nzt+1
@@ -423,7 +423,7 @@
           ENDIF
        ELSE
           IF ( bc_lr_cyc )  THEN
-             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
+             !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
              DO  i = 1, nbgp_local
                 DO  j = nys-nbgp_local, nyn+nbgp_local
                    DO  k = nzb, nzt+1
@@ -432,7 +432,7 @@
                 ENDDO
              ENDDO
              !$ACC END PARALLEL LOOP
-             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
+             !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
              DO  i = 1, nbgp_local
                 DO  j = nys-nbgp_local, nyn+nbgp_local
                    DO  k = nzb, nzt+1
@@ -506,7 +506,7 @@
 !-- are used.
     IF ( PRESENT( alternative_communicator ) )  THEN
        IF ( alternative_communicator <= 2 )  THEN
-          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
+          !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
           DO  i = 1, nbgp_local
              DO  j = nys-nbgp_local, nyn+nbgp_local
                 DO  k = nzb, nzt+1
@@ -515,7 +515,7 @@
              ENDDO
           ENDDO
           !$ACC END PARALLEL LOOP
-          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
+          !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
           DO  i = 1, nbgp_local
              DO  j = nys-nbgp_local, nyn+nbgp_local
                 DO  k = nzb, nzt+1
@@ -527,7 +527,7 @@
        ENDIF
     ELSE
        IF ( bc_lr_cyc )  THEN
-          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
+          !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
           DO  i = 1, nbgp_local
              DO  j = nys-nbgp_local, nyn+nbgp_local
                 DO  k = nzb, nzt+1
@@ -536,7 +536,7 @@
              ENDDO
           ENDDO
           !$ACC END PARALLEL LOOP
-          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
+          !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
           DO  i = 1, nbgp_local
              DO  j = nys-nbgp_local, nyn+nbgp_local
                 DO  k = nzb, nzt+1
@@ -550,7 +550,7 @@
 
     IF ( PRESENT( alternative_communicator ) )  THEN
        IF ( alternative_communicator == 1  .OR.  alternative_communicator == 3 )  THEN
-          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
+          !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
           DO  i = nxl-nbgp_local, nxr+nbgp_local
              DO  j = 1, nbgp_local
                 DO  k = nzb, nzt+1
@@ -559,7 +559,7 @@
              ENDDO
           ENDDO
           !$ACC END PARALLEL LOOP
-          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
+          !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
           DO  i = nxl-nbgp_local, nxr+nbgp_local
              DO  j = 1, nbgp_local
                 DO  k = nzb, nzt+1
@@ -571,7 +571,7 @@
        ENDIF
     ELSE
        IF ( bc_ns_cyc )  THEN
-          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
+          !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
           DO  i = nxl-nbgp_local, nxr+nbgp_local
              DO  j = 1, nbgp_local
                 DO  k = nzb, nzt+1
@@ -580,7 +580,7 @@
              ENDDO
           ENDDO
           !$ACC END PARALLEL LOOP
-          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
+          !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
           DO  i = nxl-nbgp_local, nxr+nbgp_local
              DO  j = 1, nbgp_local
                 DO  k = nzb, nzt+1
@@ -738,7 +738,7 @@
     IF ( npey == 1 )  THEN
 
        IF ( bc_ns_cyc )  THEN
-          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
+          !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
           DO  k = nzb, nzt+1
              DO  j = 1, nbgp_local
                 DO  i = nxl-nbgp_local, nxr+nbgp_local
@@ -747,7 +747,7 @@
              ENDDO
           ENDDO
           !$ACC END PARALLEL LOOP
-          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
+          !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
           DO  k = nzb, nzt+1
              DO  j = 1, nbgp_local
                 DO  i = nxl-nbgp_local, nxr+nbgp_local
@@ -915,7 +915,7 @@
     IF ( npex == 1 )  THEN
 
        IF ( bc_lr_cyc )  THEN
-          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
+          !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
           DO  i = 1, nbgp_local
              DO  j = nys-nbgp_local, nyn+nbgp_local
                 DO  k = nzb, nzt+1
@@ -924,7 +924,7 @@
              ENDDO
           ENDDO
           !$ACC END PARALLEL LOOP
-          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) IF(lacc)
+          !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
           DO  i = 1, nbgp_local
              DO  j = nys-nbgp_local, nyn+nbgp_local
                 DO  k = nzb, nzt+1
