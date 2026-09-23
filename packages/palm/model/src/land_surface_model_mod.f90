@@ -289,7 +289,7 @@
     REAL(wp), DIMENSION(:), ALLOCATABLE ::  ddz_soil           !< 1/dz_soil
     REAL(wp), DIMENSION(:), ALLOCATABLE ::  ddz_soil_center    !< 1/dz_soil_center
     REAL(wp), DIMENSION(:), ALLOCATABLE ::  dz_soil_center     !< soil grid spacing (center-center)
-    REAL(wp), DIMENSION(:), ALLOCATABLE ::  root_extr          !< root extraction
+    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  root_extr        !< root extraction per soil layer and surface
     REAL(wp), DIMENSION(:), ALLOCATABLE ::  zs                 !< depth of the temperature/moisute levels
 
     REAL(wp), DIMENSION(0:20) ::  dz_soil  = 9999999.9_wp         !< NAMELIST soil layer depths (spacing)
@@ -4008,7 +4008,7 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE lsm_init_arrays
 
-    ALLOCATE( root_extr(nzb_soil:nzt_soil) )
+    ALLOCATE( root_extr(nzb_soil:nzt_soil,1:surf_lsm%ns) )
     root_extr = 0.0_wp
 !
 !-- Allocate surface and soil temperature / humidity. Please note, these arrays are allocated
@@ -4516,21 +4516,17 @@ END SUBROUTINE lsm_recompute_outgoing_radiation
           !$OMP PARALLEL DO PRIVATE (m, k) SCHEDULE (STATIC)
 !NEC$ nointerchange
 !
-!--       root_extr is shared per level; retain the CPU last-surface selection.
-          !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(enable_openacc)
+!--       Each surface has its own root distribution and soil moisture profile.
+          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(2) DEFAULT(PRESENT) IF(enable_openacc)
           DO  k = nzb_soil, nzt_soil
-             !$ACC LOOP SEQ
              DO  m = 1, surf_lsm%ns
+                root_extr(k,m) = 0.0_wp
                 IF ( .NOT. surf_lsm%water_surface(m) )  THEN
-                   IF ( m_total(m) > 0.0_wp )  THEN
-                      IF ( m_soil%var_2d(k,m) > surf_lsm%m_wilt(k,m) )  THEN
-                         !$ACC ATOMIC WRITE
-                         root_extr(k) = surf_lsm%root_fr(k,m) * m_soil%var_2d(k,m) / m_total(m)
-                      ELSE
-                         !$ACC ATOMIC WRITE
-                         root_extr(k) = 0.0_wp
+                  IF ( m_total(m) > 0.0_wp )  THEN
+                     IF ( m_soil%var_2d(k,m) > surf_lsm%m_wilt(k,m) )  THEN
+                         root_extr(k,m) = surf_lsm%root_fr(k,m) * m_soil%var_2d(k,m) / m_total(m)
                       ENDIF
-                   ENDIF
+                  ENDIF
                 ENDIF
              ENDDO
           ENDDO
@@ -4549,7 +4545,7 @@ END SUBROUTINE lsm_recompute_outgoing_radiation
                 tend(m,nzb_soil) = ( surf_lsm%lambda_w(nzb_soil,m) *                               &
                                      ( m_soil%var_2d(nzb_soil+1,m) - m_soil%var_2d(nzb_soil,m) ) * &
                                      ddz_soil_center(nzb_soil) - surf_lsm%gamma_w(nzb_soil,m) -    &
-                                     ( root_extr(nzb_soil) * surf_lsm%qsws_veg(m) +                &
+                                     ( root_extr(nzb_soil,m) * surf_lsm%qsws_veg(m) +              &
                                        surf_lsm%qsws_soil(m) ) * drho_l_lv                         &
                                    ) * ddz_soil(nzb_soil)
              ENDIF
@@ -4571,7 +4567,7 @@ END SUBROUTINE lsm_recompute_outgoing_radiation
                                                               m_soil%var_2d(k-1,m)                 &
                                                             ) * ddz_soil_center(k-1) +             &
                                  surf_lsm%gamma_w(k-1,m)                                           &
-                               - ( root_extr(k) * surf_lsm%qsws_veg(m) * drho_l_lv )               &
+                               - ( root_extr(k,m) * surf_lsm%qsws_veg(m) * drho_l_lv )             &
                                ) * ddz_soil(k)
                 ENDIF
              ENDDO
@@ -4588,7 +4584,7 @@ END SUBROUTINE lsm_recompute_outgoing_radiation
                                       ( m_soil%var_2d(nzt_soil,m) - m_soil%var_2d(nzt_soil-1,m) ) *&
                                       ddz_soil_center(nzt_soil-1) +                                &
                                       surf_lsm%gamma_w(nzt_soil-1,m) -                             &
-                                      ( root_extr(nzt_soil) * surf_lsm%qsws_veg(m) * drho_l_lv )   &
+                                      ( root_extr(nzt_soil,m) * surf_lsm%qsws_veg(m) * drho_l_lv ) &
                                    ) * ddz_soil(nzt_soil)
 
              ENDIF
