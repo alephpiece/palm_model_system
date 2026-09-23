@@ -828,6 +828,7 @@
 !--          ( might be the case if a vertical level is completely occupied
 !--            with topography ).
              ref_state(:) = MERGE( MAXVAL(ref_state), ref_state, ref_state == 0.0_wp )
+             !$ACC UPDATE DEVICE(ref_state) IF(enable_openacc)
           ENDIF
 
           IF ( ( ws_scheme_mom .OR. ws_scheme_sca )  .AND.  intermediate_timestep_count == 1 )     &
