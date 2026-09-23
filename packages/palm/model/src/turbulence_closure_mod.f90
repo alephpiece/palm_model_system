@@ -3106,14 +3106,17 @@
           !$ACC PRESENT(dd2zu, diss, drho_air_zw, d_exner, e, exner, kh, pt, q) &
           !$ACC NO_CREATE(ql) &
           !$ACC PRESENT(surf_def) &
-          !$ACC NO_CREATE(surf_def%downward, surf_def%end_index, surf_def%k, surf_def%qsws) &
+          !$ACC NO_CREATE(surf_def%downward, surf_def%k, surf_def%qsws) &
           !$ACC PRESENT(surf_lsm) &
-          !$ACC NO_CREATE(surf_def%shf, surf_def%start_index, surf_def%upward, surf_lsm%downward) &
-          !$ACC NO_CREATE(surf_lsm%end_index, surf_lsm%k, surf_lsm%qsws_agg, surf_lsm%shf_agg) &
+          !$ACC NO_CREATE(surf_def%shf, surf_def%upward, surf_lsm%downward) &
+          !$ACC NO_CREATE(surf_lsm%k, surf_lsm%qsws_agg, surf_lsm%shf_agg) &
           !$ACC PRESENT(surf_top, surf_usm) &
-          !$ACC NO_CREATE(surf_lsm%start_index, surf_lsm%upward, surf_usm%end_index) &
+          !$ACC NO_CREATE(surf_lsm%upward) &
           !$ACC PRESENT(tend, topo_flags, vpt) &
-          !$ACC NO_CREATE(surf_usm%k, surf_usm%start_index, surf_usm%upward) &
+          !$ACC NO_CREATE(surf_usm%k, surf_usm%upward) &
+          !$ACC PRESENT(surf_def%start_index, surf_def%end_index) &
+          !$ACC PRESENT(surf_lsm%start_index, surf_lsm%end_index) &
+          !$ACC PRESENT(surf_usm%start_index, surf_usm%end_index) &
           !$ACC PRIVATE(tmp_flux_h, surf_s, surf_e) &
           !$ACC IF(enable_openacc)
           DO  i = nxl, nxr
