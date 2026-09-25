@@ -424,8 +424,8 @@
        ELSE
           IF ( bc_lr_cyc )  THEN
              !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
-             DO  i = 1, nbgp_local
-                DO  j = nys-nbgp_local, nyn+nbgp_local
+             DO  j = nys-nbgp_local, nyn+nbgp_local
+                DO  i = 1, nbgp_local
                    DO  k = nzb, nzt+1
                       ar(k,j,nxl-nbgp_local-1+i) = ar(k,j,nxr-nbgp_local+i)
                    ENDDO
@@ -433,8 +433,8 @@
              ENDDO
              !$ACC END PARALLEL LOOP
              !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
-             DO  i = 1, nbgp_local
-                DO  j = nys-nbgp_local, nyn+nbgp_local
+             DO  j = nys-nbgp_local, nyn+nbgp_local
+                DO  i = 1, nbgp_local
                    DO  k = nzb, nzt+1
                       ar(k,j,nxr+i) = ar(k,j,nxl+i-1)
                    ENDDO
