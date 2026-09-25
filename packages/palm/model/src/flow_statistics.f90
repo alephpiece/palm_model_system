@@ -236,6 +236,7 @@
     REAL(wp) ::  s13              !< fluctuating rate-of-strain tensor component 13
     REAL(wp) ::  s23              !< fluctuating rate-of-strain tensor component 23
     REAL(wp) ::  s33              !< fluctuating rate-of-strain tensor component 33
+    REAL(wp) ::  sums_l_epert     !< perturbation energy accumulated over one vertical column
     REAL(wp) ::  sums_l_etot      !<
     REAL(wp) ::  ust              !<
     REAL(wp) ::  ust2             !<
@@ -585,7 +586,7 @@
 !--               are on the device. Maybe a bug of nvfortran compiler.
        tn = 0
        !$OMP PARALLEL PRIVATE( i, j, k, pts, sums_ll,                          &
-       !$OMP                   sums_l_etot, tn, ust, ust2, u2, vst, vst2, v2,  &
+       !$OMP                   sums_l_epert, sums_l_etot, tn, ust, ust2, u2, vst, vst2, v2,  &
        !$OMP                   w2, flag, m )
        !$ tn = omp_get_thread_num()
        !$OMP DO
@@ -874,10 +875,11 @@
 !--    on deviations from the horizontal mean, instead of spatial descretization of the advection
 !--    term.
        !$OMP DO
-       !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(flag, i, j, k, ust2, vst2, w2) &
+       !$ACC PARALLEL LOOP GANG VECTOR PRIVATE(flag, sums_l_epert, ust2, vst2, w2) &
        !$ACC DEFAULT(PRESENT) IF(enable_openacc)
        DO  i = nxl, nxr
           DO  j =  nys, nyn
+             sums_l_epert = 0.0_wp
              DO  k = nzb, nzt+1
                 flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 22 ) )
 
@@ -886,13 +888,15 @@
                 vst2 = ( v(k,j,i) - hom(k,1,2,sr) )**2
                 w2   = w(k,j,i)**2
 
-                !$ACC ATOMIC UPDATE
-                sums_l(nzb+5,pr_palm,tn) = sums_l(nzb+5,pr_palm,tn)                                &
-                                           + 0.5_wp * ( ust2 + vst2 + w2 ) * rmask(j,i,sr) * flag
+                sums_l_epert = sums_l_epert                                                     &
+                             + 0.5_wp * ( ust2 + vst2 + w2 ) * rmask(j,i,sr) * flag
 
              ENDDO
+             !$ACC ATOMIC UPDATE
+             sums_l(nzb+5,pr_palm,tn) = sums_l(nzb+5,pr_palm,tn) + sums_l_epert
           ENDDO
        ENDDO
+       !$ACC END PARALLEL LOOP
 
 !
 !--    Horizontally averaged profiles of the vertical fluxes
