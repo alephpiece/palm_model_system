@@ -381,7 +381,7 @@
        IF ( ocean_mode )  e_p(nzb,:,:) = e_p(nzb+1,:,:)
 !
 !--    Set Neumann boundary condition for TKE at model top. Do this also in case of a nested run.
-       !$ACC KERNELS PRESENT(diss_p,e_p) IF(enable_openacc)
+       !$ACC KERNELS PRESENT(e_p) NO_CREATE(diss_p) IF(enable_openacc)
        e_p(nzt+1,:,:) = e_p(nzt,:,:)
        IF ( rans_tke_e )  diss_p(nzt+1,:,:) = diss_p(nzt,:,:)
        !$ACC END KERNELS
