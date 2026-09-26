@@ -1351,11 +1351,11 @@
 !--       Ghost point exchange. Neumann conditions for non-cyclic horizontal boundaries are
 !--       implicitly treated via the flags array.  In case of sufficiently large data,
 !--       contiguous buffers are used in exchange_horiz_rb to only exchange data of the respective
-!--       color. The threshold of 900 is empirical and may require adjustment to optimize
+!--       color. The size threshold is empirical and may require adjustment to optimize
 !--       performance.
 !--       Levels where total domain is on PE0 do not require optimized exchange.
 #if defined( __parallel )
-          IF ( ( ngp_xz(l) >= 900  .OR.  ngp_yz(l) >= 900 )  .AND.  .NOT. mg_switch_to_pe0  .AND.  &
+          IF ( ( ngp_xz(l) >= 1024  .OR.  ngp_yz(l) >= 1024 )  .AND.  .NOT. mg_switch_to_pe0  .AND.  &
                npex /= 1  .AND.  npey /= 1  )                                                      &
           THEN
              CALL exchange_horiz_rb( p_mg, 1, color = color, kinc = 1,                             &
