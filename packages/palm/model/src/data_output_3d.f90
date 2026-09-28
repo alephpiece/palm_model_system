@@ -195,6 +195,8 @@
     INTEGER(iwp) ::  nzb_do   !< vertical lower limit for data output
     INTEGER(iwp) ::  nzt_do   !< vertical upper limit for data output
 
+    LOGICAL ::  host_average     !< average field produced on the host
+    LOGICAL ::  lacc_output      !< device execution for the current output field
     LOGICAL ::  found            !< true if output variable was found
     LOGICAL ::  mask_topography  !< true if topography grid points should be masked (false e.g. in case of terrain following data)
     LOGICAL ::  resorted         !< true if variable is resorted
@@ -277,6 +279,14 @@
        mask_topography = .TRUE.
        resorted        = .FALSE.
        trimvar = TRIM( do3d(av,ivar) )
+!
+!--    Soil output is assembled on the host and changes the temporary array shape.
+       host_average = av == 1 .AND. ( trimvar == 'q' .OR. trimvar == 'thetav' )
+       lacc_output = .FALSE.
+#if defined( _OPENACC )
+       lacc_output = enable_openacc .AND. .NOT. ( land_surface .AND. &
+                         ( trimvar == 't_soil' .OR. trimvar == 'm_soil' ) )
+#endif
 
 !
 !--    Temporary solution to account for data output within the new urban surface model
@@ -312,11 +322,15 @@
 !--    in some modules values are asssigned not for all grid points above topography.
 !--    Grid points below topography will be masked again further below, directly before output.
        ALLOCATE( local_pf(nxl:nxr,nys:nyn,nzb_do:nzt_do) )
-       !$ACC DATA CREATE(local_pf) IF(enable_openacc)
+       !$ACC DATA CREATE(local_pf) IF(lacc_output)
        IF ( .NOT. data_output_raw )  THEN
-          !$ACC KERNELS DEFAULT(PRESENT) IF(enable_openacc)
-          local_pf = output_fill_value
-          !$ACC END KERNELS
+          IF ( lacc_output )  THEN
+             !$ACC KERNELS DEFAULT(PRESENT)
+             local_pf = output_fill_value
+             !$ACC END KERNELS
+          ELSE
+             local_pf = output_fill_value
+          ENDIF
        ENDIF
 !
 !--    Set masking flag for topography for output arrays.
@@ -562,7 +576,7 @@
              IF ( av == 0 )  THEN
                 IF ( interpolate_to_grid_center )  THEN
                    !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
-                   !$ACC DEFAULT(PRESENT) IF(enable_openacc)
+                   !$ACC DEFAULT(PRESENT) IF(lacc_output)
                    DO  i = nxl, nxr
                       DO  j = nys, nyn
                          DO  k = nzb_do, nzt_do
@@ -587,7 +601,7 @@
              IF ( av == 0 )  THEN
                 IF ( interpolate_to_grid_center )  THEN
                    !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
-                   !$ACC DEFAULT(PRESENT) IF(enable_openacc)
+                   !$ACC DEFAULT(PRESENT) IF(lacc_output)
                    DO  i = nxl, nxr
                       DO  j = nys, nyn
                          DO  k = nzb_do, nzt_do
@@ -623,7 +637,7 @@
              IF ( av == 0 )  THEN
                 IF ( interpolate_to_grid_center )  THEN
                    !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
-                   !$ACC DEFAULT(PRESENT) IF(enable_openacc)
+                   !$ACC DEFAULT(PRESENT) IF(lacc_output)
                    DO  i = nxl, nxr
                       DO  j = nys, nyn
                          DO  k = nzb_do, nzt_do
@@ -737,11 +751,12 @@
 !
 !--    Resort the array to be output, if not done above.
        IF ( .NOT. resorted )  THEN
+          !$ACC DATA COPYIN(to_be_resorted) IF(lacc_output .AND. host_average)
 
 #if defined( _OPENACC )
 !
 !--       Security check for arrays from modules that are still not ported.
-          IF ( enable_openacc  .AND.  .NOT. acc_is_present( to_be_resorted ) )  THEN
+          IF ( lacc_output  .AND.  .NOT. acc_is_present( to_be_resorted ) )  THEN
              IF ( av == 0 )  THEN
                 message_string = 'output array "' // TRIM( trimvar ) // '" not on device'
              ELSE
@@ -751,7 +766,7 @@
           ENDIF
 #endif
           !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
-          !$ACC DEFAULT(PRESENT) IF(enable_openacc)
+          !$ACC DEFAULT(PRESENT) IF(lacc_output)
           DO  i = nxl, nxr
              DO  j = nys, nyn
                 DO  k = nzb_do, nzt_do
@@ -760,6 +775,7 @@
              ENDDO
           ENDDO
 
+          !$ACC END DATA
        ENDIF
 !
 !--    Set fill values at topography/building grid points, but not for debugging to be able to
@@ -767,7 +783,7 @@
 !--    Terrain following data must not be masked at all.
        IF ( .NOT. data_output_raw  .AND.  mask_topography )  THEN
           !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
-          !$ACC DEFAULT(PRESENT) IF(enable_openacc)
+          !$ACC DEFAULT(PRESENT) IF(lacc_output)
           DO  i = nxl, nxr
              DO  j = nys, nyn
                 DO  k = nzb_do, nzt_do
@@ -789,7 +805,7 @@
           IF ( myid == 0 )  THEN
              WRITE ( 30 )  time_since_reference_point, do3d_time_count(av), av
           ENDIF
-          !$ACC UPDATE HOST( local_pf ) IF(enable_openacc)
+          !$ACC UPDATE HOST( local_pf ) IF(lacc_output)
           DO  i = 0, io_blocks-1
              IF ( i == io_group )  THEN
                 WRITE ( 30 )  nxl, nxr, nys, nyn, nzb_do, nzt_do
@@ -810,7 +826,11 @@
 !--       The rearrangement (transposition) requires that the virtual PE grid has no more cores
 !--       along x than output grid points along z. If a 1d-decomposition along y is used (npex=1),
 !--       a transposition is not required.
-          IF ( npex <= ( nzt_do - nzb_do + 1 )  .AND.  npex > 1 )  THEN
+          IF ( npex <= ( nzt_do - nzb_do + 1 )  .AND.  npex > 1 &
+#if defined( _OPENACC ) && defined( __cuda_fft )
+               .AND. ( .NOT. enable_openacc .OR. lacc_output ) &
+#endif
+             )  THEN
 !
 !--          Indices must be set each time, because output arrays can have different size along z.
              CALL setup_transpose_indices_zx_diffnz( nzb_do, nzt_do )
@@ -818,12 +838,12 @@
              ALLOCATE( f_inv(nys:nyn,nxl:nxr_x_max,1:nz_x_max_diffnz) )
              ALLOCATE( tr_out(nx+1,nys:nyn,nzb_x_diffnz:nzt_x_diffnz) )
 #if defined( __cuda_fft )
-             !$ACC DATA CREATE(f_inv, tr_out) IF(enable_openacc)
+             !$ACC DATA CREATE(f_inv, tr_out) IF(lacc_output)
 #endif
 
 #if defined( _OPENACC ) && !defined( __cuda_fft )
 !--          Without CUDA FFT, the output transpose routines execute on the host.
-             !$ACC UPDATE SELF(local_pf) IF(enable_openacc)
+             !$ACC UPDATE SELF(local_pf) IF(lacc_output)
 #endif
              CALL resort_for_zx( local_pf, f_inv, nzb_do, nzt_do )
 !
@@ -834,7 +854,7 @@
              CALL cpu_log( log_point_s(58), 'output_3d 1:nx+1 PUT', 'start' )
              output_3d_file_size = output_3d_file_size + SIZE( tr_out )
 #if defined( __cuda_fft )
-             !$ACC UPDATE HOST(tr_out) IF(enable_openacc)
+             !$ACC UPDATE HOST(tr_out) IF(lacc_output)
 #endif
              nc_stat = NF90_PUT_VAR( id_set_3d(av), id_var_do3d(av,ivar),                          &
                                      tr_out(1:nx+1,nys:nyn,nzb_x_diffnz:nzt_x_diffnz),             &
@@ -858,7 +878,7 @@
              ELSE
                 output_3d_file_size = output_3d_file_size + SIZE( local_pf )
              ENDIF
-             !$ACC UPDATE HOST(local_pf) IF(enable_openacc)
+             !$ACC UPDATE HOST(local_pf) IF(lacc_output)
              nc_stat = NF90_PUT_VAR( id_set_3d(av), id_var_do3d(av,ivar),                          &
                                       local_pf(nxl:nxr,nys:nyn,nzb_do:nzt_do),                     &
                                       start = (/ nxl+1, nys+1, 1, do3d_time_count(av) /),          &

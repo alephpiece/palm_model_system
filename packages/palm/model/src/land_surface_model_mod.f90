@@ -4809,6 +4809,9 @@ END SUBROUTINE lsm_recompute_outgoing_radiation
        SELECT CASE ( TRIM( variable ) )
 
           CASE ( 'c_liq*' )
+             IF ( surf_lsm%ns > 0 )  THEN
+                !$ACC UPDATE SELF(surf_lsm%c_liq) IF(enable_openacc)
+             ENDIF
              IF ( ALLOCATED( c_liq_av ) )  THEN
                 DO  m = 1, surf_lsm%ns
                    i   = surf_lsm%i(m)
@@ -4819,6 +4822,7 @@ END SUBROUTINE lsm_recompute_outgoing_radiation
              ENDIF
 
           CASE ( 'c_soil*' )
+
              IF ( ALLOCATED( c_soil_av ) )  THEN
                 DO  m = 1, surf_lsm%ns
                    i   = surf_lsm%i(m)
@@ -4829,6 +4833,7 @@ END SUBROUTINE lsm_recompute_outgoing_radiation
              ENDIF
 
           CASE ( 'c_veg*' )
+
              IF ( ALLOCATED( c_veg_av ) )  THEN
                 DO  m = 1, surf_lsm%ns
                    i   = surf_lsm%i(m)
@@ -4860,6 +4865,7 @@ END SUBROUTINE lsm_recompute_outgoing_radiation
 
           CASE ( 'm_soil' )
              IF ( ALLOCATED( m_soil_av ) )  THEN
+                !$ACC UPDATE SELF(m_soil%var_2d(nzb_soil:nzt_soil,1:surf_lsm%ns)) IF(enable_openacc)
                 DO  m = 1, surf_lsm%ns
                    i   = surf_lsm%i(m)
                    j   = surf_lsm%j(m)
@@ -4871,6 +4877,9 @@ END SUBROUTINE lsm_recompute_outgoing_radiation
              ENDIF
 
           CASE ( 'qsws_liq*' )
+             IF ( surf_lsm%ns > 0 )  THEN
+                !$ACC UPDATE SELF(surf_lsm%qsws_liq) IF(enable_openacc)
+             ENDIF
              IF ( ALLOCATED( qsws_liq_av ) )  THEN
                 DO  m = 1, surf_lsm%ns
                    i   = surf_lsm%i(m)
@@ -4881,6 +4890,9 @@ END SUBROUTINE lsm_recompute_outgoing_radiation
              ENDIF
 
           CASE ( 'qsws_soil*' )
+             IF ( surf_lsm%ns > 0 )  THEN
+                !$ACC UPDATE SELF(surf_lsm%qsws_soil) IF(enable_openacc)
+             ENDIF
              IF ( ALLOCATED( qsws_soil_av ) )  THEN
                 DO  m = 1, surf_lsm%ns
                    i   = surf_lsm%i(m)
@@ -4891,6 +4903,9 @@ END SUBROUTINE lsm_recompute_outgoing_radiation
              ENDIF
 
           CASE ( 'qsws_veg*' )
+             IF ( surf_lsm%ns > 0 )  THEN
+                !$ACC UPDATE SELF(surf_lsm%qsws_veg) IF(enable_openacc)
+             ENDIF
              IF ( ALLOCATED(qsws_veg_av ) )  THEN
                 DO  m = 1, surf_lsm%ns
                    i   = surf_lsm%i(m)
@@ -4901,6 +4916,9 @@ END SUBROUTINE lsm_recompute_outgoing_radiation
              ENDIF
 
           CASE ( 'r_s*' )
+             IF ( surf_lsm%ns > 0 )  THEN
+                !$ACC UPDATE SELF(surf_lsm%r_s) IF(enable_openacc)
+             ENDIF
              IF ( ALLOCATED( r_s_av) )  THEN
                 DO  m = 1, surf_lsm%ns
                    i   = surf_lsm%i(m)
@@ -4912,6 +4930,7 @@ END SUBROUTINE lsm_recompute_outgoing_radiation
 
           CASE ( 't_soil' )
              IF ( ALLOCATED( t_soil_av ) )  THEN
+                !$ACC UPDATE SELF(t_soil%var_2d(nzb_soil:nzt_soil+1,1:surf_lsm%ns)) IF(enable_openacc)
                 DO  m = 1, surf_lsm%ns
                    i   = surf_lsm%i(m)
                    j   = surf_lsm%j(m)
@@ -5124,6 +5143,9 @@ END SUBROUTINE lsm_recompute_outgoing_radiation
 !--    quantities are already exchanged.
        CASE ( 'c_liq*_xy' )        ! 2d-array
           IF ( av == 0 )  THEN
+             IF ( surf_lsm%ns > 0 )  THEN
+                !$ACC UPDATE SELF(surf_lsm%c_liq) IF(enable_openacc)
+             ENDIF
              DO  m = 1, surf_lsm%ns
                 i                   = surf_lsm%i(m)
                 j                   = surf_lsm%j(m)
@@ -5147,6 +5169,7 @@ END SUBROUTINE lsm_recompute_outgoing_radiation
 
        CASE ( 'c_soil*_xy' )        ! 2d-array
           IF ( av == 0 )  THEN
+
              DO  m = 1, surf_lsm%ns
                 i                   = surf_lsm%i(m)
                 j                   = surf_lsm%j(m)
@@ -5170,6 +5193,7 @@ END SUBROUTINE lsm_recompute_outgoing_radiation
 
        CASE ( 'c_veg*_xy' )        ! 2d-array
           IF ( av == 0 )  THEN
+
              DO  m = 1, surf_lsm%ns
                 i                   = surf_lsm%i(m)
                 j                   = surf_lsm%j(m)
@@ -5268,6 +5292,9 @@ END SUBROUTINE lsm_recompute_outgoing_radiation
 
        CASE ( 'qsws_liq*_xy' )        ! 2d-array
           IF ( av == 0 )  THEN
+             IF ( surf_lsm%ns > 0 )  THEN
+                !$ACC UPDATE SELF(surf_lsm%qsws_liq) IF(enable_openacc)
+             ENDIF
              DO  m = 1, surf_lsm%ns
                 i                   = surf_lsm%i(m)
                 j                   = surf_lsm%j(m)
@@ -5291,6 +5318,9 @@ END SUBROUTINE lsm_recompute_outgoing_radiation
 
        CASE ( 'qsws_soil*_xy' )        ! 2d-array
           IF ( av == 0 )  THEN
+             IF ( surf_lsm%ns > 0 )  THEN
+                !$ACC UPDATE SELF(surf_lsm%qsws_soil) IF(enable_openacc)
+             ENDIF
              DO  m = 1, surf_lsm%ns
                 i                   = surf_lsm%i(m)
                 j                   = surf_lsm%j(m)
@@ -5314,6 +5344,9 @@ END SUBROUTINE lsm_recompute_outgoing_radiation
 
        CASE ( 'qsws_veg*_xy' )        ! 2d-array
           IF ( av == 0 )  THEN
+             IF ( surf_lsm%ns > 0 )  THEN
+                !$ACC UPDATE SELF(surf_lsm%qsws_veg) IF(enable_openacc)
+             ENDIF
              DO  m = 1, surf_lsm%ns
                 i                   = surf_lsm%i(m)
                 j                   = surf_lsm%j(m)
@@ -5338,6 +5371,9 @@ END SUBROUTINE lsm_recompute_outgoing_radiation
 
        CASE ( 'r_s*_xy' )        ! 2d-array
           IF ( av == 0 )  THEN
+             IF ( surf_lsm%ns > 0 )  THEN
+                !$ACC UPDATE SELF(surf_lsm%r_s) IF(enable_openacc)
+             ENDIF
              DO  m = 1, surf_lsm%ns
                 i                   = surf_lsm%i(m)
                 j                   = surf_lsm%j(m)
@@ -5437,6 +5473,7 @@ END SUBROUTINE lsm_recompute_outgoing_radiation
 
          mask_topography = .FALSE.
          IF ( av == 0 )  THEN
+            !$ACC UPDATE SELF(m_soil%var_2d(nzb_soil:nzt_soil,1:surf_lsm%ns)) IF(enable_openacc)
             DO  m = 1, surf_lsm%ns
                 i   = surf_lsm%i(m)
                 j   = surf_lsm%j(m)
@@ -5462,6 +5499,7 @@ END SUBROUTINE lsm_recompute_outgoing_radiation
 
          mask_topography = .FALSE.
          IF ( av == 0 )  THEN
+            !$ACC UPDATE SELF(t_soil%var_2d(nzb_soil:nzt_soil+1,1:surf_lsm%ns)) IF(enable_openacc)
             DO  m = 1, surf_lsm%ns
                i   = surf_lsm%i(m)
                j   = surf_lsm%j(m)

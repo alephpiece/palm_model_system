@@ -66,6 +66,10 @@
         ONLY:  enable_openacc
 #endif
 
+#if defined( _OPENACC )
+    USE openacc, ONLY: acc_is_present
+#endif
+
     USE cpulog,                                                                                    &
         ONLY:  cpu_log,                                                                            &
                log_point
@@ -171,7 +175,14 @@
                    ALLOCATE( p_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
                 ENDIF
                 p_av = 0.0_wp
-                !$ACC ENTER DATA COPYIN(p_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg)) IF(enable_openacc)
+#if defined( _OPENACC )
+                IF ( enable_openacc )  THEN
+                   IF ( .NOT. acc_is_present( p_av ) )  THEN
+                      !$ACC ENTER DATA CREATE(p_av)
+                   ENDIF
+                ENDIF
+#endif
+                !$ACC UPDATE DEVICE(p_av) IF(enable_openacc)
 
              CASE ( 'pc' )
                 IF ( .NOT. ALLOCATED( pc_av ) )  THEN
@@ -286,7 +297,14 @@
                    ALLOCATE( pt_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
                 ENDIF
                 pt_av = 0.0_wp
-                !$ACC ENTER DATA COPYIN(pt_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg)) IF(enable_openacc)
+#if defined( _OPENACC )
+                IF ( enable_openacc )  THEN
+                   IF ( .NOT. acc_is_present( pt_av ) )  THEN
+                      !$ACC ENTER DATA CREATE(pt_av)
+                   ENDIF
+                ENDIF
+#endif
+                !$ACC UPDATE DEVICE(pt_av) IF(enable_openacc)
 
              CASE ( 'thetal' )
                 IF ( .NOT. ALLOCATED( lpt_av ) )  THEN
@@ -305,7 +323,14 @@
                    ALLOCATE( u_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
                 ENDIF
                 u_av = 0.0_wp
-                !$ACC ENTER DATA COPYIN(u_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg)) IF(enable_openacc)
+#if defined( _OPENACC )
+                IF ( enable_openacc )  THEN
+                   IF ( .NOT. acc_is_present( u_av ) )  THEN
+                      !$ACC ENTER DATA CREATE(u_av)
+                   ENDIF
+                ENDIF
+#endif
+                !$ACC UPDATE DEVICE(u_av) IF(enable_openacc)
 
              CASE ( 'us*' )
                 IF ( .NOT. ALLOCATED( us_av ) )  THEN
@@ -318,7 +343,14 @@
                    ALLOCATE( v_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
                 ENDIF
                 v_av = 0.0_wp
-                !$ACC ENTER DATA COPYIN(v_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg)) IF(enable_openacc)
+#if defined( _OPENACC )
+                IF ( enable_openacc )  THEN
+                   IF ( .NOT. acc_is_present( v_av ) )  THEN
+                      !$ACC ENTER DATA CREATE(v_av)
+                   ENDIF
+                ENDIF
+#endif
+                !$ACC UPDATE DEVICE(v_av) IF(enable_openacc)
 
              CASE ( 'thetav' )
                 IF ( .NOT. ALLOCATED( vpt_av ) )  THEN
@@ -331,7 +363,14 @@
                    ALLOCATE( w_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
                 ENDIF
                 w_av = 0.0_wp
-                !$ACC ENTER DATA COPYIN(w_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg)) IF(enable_openacc)
+#if defined( _OPENACC )
+                IF ( enable_openacc )  THEN
+                   IF ( .NOT. acc_is_present( w_av ) )  THEN
+                      !$ACC ENTER DATA CREATE(w_av)
+                   ENDIF
+                ENDIF
+#endif
+                !$ACC UPDATE DEVICE(w_av) IF(enable_openacc)
 
              CASE ( 'z0*' )
                 IF ( .NOT. ALLOCATED( z0_av ) )  THEN
@@ -375,6 +414,9 @@
        SELECT CASE ( trimvar )
 
           CASE ( 'ghf*' )
+             IF ( surf_lsm%ns > 0 )  THEN
+                !$ACC UPDATE SELF(surf_lsm%ghf) IF(enable_openacc)
+             ENDIF
              IF ( ALLOCATED( ghf_av ) ) THEN
                 DO  i = nxl, nxr
                    DO  j = nys, nyn
@@ -587,6 +629,7 @@
 
           CASE ( 'q' )
              IF ( ALLOCATED( q_av ) ) THEN
+                !$ACC UPDATE SELF(q) IF(enable_openacc)
                 DO  i = nxl, nxr
                    DO  j = nys, nyn
                       DO  k = nzb, nzt+1
@@ -724,6 +767,9 @@
              ENDIF
 
           CASE ( 'r_a*' )
+             IF ( surf_lsm%ns > 0 )  THEN
+                !$ACC UPDATE SELF(surf_lsm%r_a) IF(enable_openacc)
+             ENDIF
              IF ( ALLOCATED( r_a_av ) ) THEN
                 DO  i = nxl, nxr
                    DO  j = nys, nyn
@@ -757,6 +803,12 @@
              ENDIF
 
           CASE ( 'shf*' )
+             IF ( surf_def%ns > 0 )  THEN
+                !$ACC UPDATE SELF(surf_def%shf) IF(enable_openacc)
+             ENDIF
+             IF ( surf_lsm%ns > 0 )  THEN
+                !$ACC UPDATE SELF(surf_lsm%shf_agg) IF(enable_openacc)
+             ENDIF
 !
 !--          In case of default surfaces, clean-up flux by density.
 !--          In case of land- and urban-surfaces, convert fluxes into dynamic units.
@@ -836,6 +888,12 @@
              ENDIF
 
           CASE ( 't*' )
+             IF ( surf_def%ns > 0 )  THEN
+                !$ACC UPDATE SELF(surf_def%ts) IF(enable_openacc)
+             ENDIF
+             IF ( surf_lsm%ns > 0 )  THEN
+                !$ACC UPDATE SELF(surf_lsm%ts) IF(enable_openacc)
+             ENDIF
              IF ( ALLOCATED( ts_av ) ) THEN
                 DO  i = nxl, nxr
                    DO  j = nys, nyn
@@ -892,6 +950,12 @@
              ENDIF
 
           CASE ( 'tsurf*' )
+             IF ( surf_def%ns > 0 )  THEN
+                !$ACC UPDATE SELF(surf_def%pt_surface) IF(enable_openacc)
+             ENDIF
+             IF ( surf_lsm%ns > 0 )  THEN
+                !$ACC UPDATE SELF(surf_lsm%pt_surface) IF(enable_openacc)
+             ENDIF
              IF ( ALLOCATED( tsurf_av ) ) THEN
                 DO  i = nxl, nxr
                    DO  j = nys, nyn
@@ -944,6 +1008,12 @@
              ENDIF
 
           CASE ( 'us*' )
+             IF ( surf_def%ns > 0 )  THEN
+                !$ACC UPDATE SELF(surf_def%us) IF(enable_openacc)
+             ENDIF
+             IF ( surf_lsm%ns > 0 )  THEN
+                !$ACC UPDATE SELF(surf_lsm%us) IF(enable_openacc)
+             ENDIF
              IF ( ALLOCATED( us_av ) ) THEN
                 DO  i = nxl, nxr
                    DO  j = nys, nyn
@@ -991,6 +1061,7 @@
 
           CASE ( 'thetav' )
              IF ( ALLOCATED( vpt_av ) ) THEN
+                !$ACC UPDATE SELF(vpt) IF(enable_openacc)
                 DO  i = nxl, nxr
                    DO  j = nys, nyn
                       DO  k = nzb, nzt+1

@@ -197,6 +197,8 @@
 #endif
 
     LOGICAL ::  found          !< true if output variable was found
+    LOGICAL ::  host_average     !< average field produced on the host
+    LOGICAL ::  host_surface_output !< host-assembled surface output field
     LOGICAL ::  resorted       !< true if variable is resorted
     LOGICAL ::  two_d          !< true if variable is only two dimensional
 
@@ -425,6 +427,31 @@
 !
 !--       Store the array chosen on the temporary array.
           resorted = .FALSE.
+          host_average = .FALSE.
+          IF ( av == 1 )  THEN
+             SELECT CASE ( TRIM( do2d(av,ivar) ) )
+                CASE ( 'q_xy', 'q_xz', 'q_yz', 'thetav_xy', 'thetav_xz', 'thetav_yz' )
+                   host_average = .TRUE.
+             END SELECT
+          ENDIF
+          host_surface_output = .FALSE.
+          SELECT CASE ( TRIM( do2d(av,ivar) ) )
+             CASE ( 'us*_xy', &
+                    't*_xy', &
+                    'r_a*_xy', &
+                    'r_s*_xy', &
+                    'ghf*_xy', &
+                    'qsws_liq*_xy', &
+                    'qsws_soil*_xy', &
+                    'qsws_veg*_xy', &
+                    'c_liq*_xy', &
+                    'c_soil*_xy', &
+                    'c_veg*_xy' )
+                host_surface_output = .TRUE.
+          END SELECT
+          IF ( host_surface_output )  THEN
+             !$ACC UPDATE SELF(local_pf) IF(enable_openacc)
+          ENDIF
           SELECT CASE ( TRIM( do2d(av,ivar) ) )
 
              CASE ( 'e_xy', 'e_xz', 'e_yz' )
@@ -463,6 +490,9 @@
 
              CASE ( 'ghf*_xy' )        ! 2d-array
                 IF ( av == 0 )  THEN
+                   IF ( surf_lsm%ns > 0 )  THEN
+                      !$ACC UPDATE SELF(surf_lsm%ghf) IF(enable_openacc)
+                   ENDIF
                    DO  m = 1, surf_lsm%ns
                       i = surf_lsm%i(m)
                       j = surf_lsm%j(m)
@@ -911,6 +941,9 @@
 
              CASE ( 'r_a*_xy' )        ! 2d-array
                 IF ( av == 0 )  THEN
+                   IF ( surf_lsm%ns > 0 )  THEN
+                      !$ACC UPDATE SELF(surf_lsm%r_a) IF(enable_openacc)
+                   ENDIF
                    DO  m = 1, surf_lsm%ns
                       i = surf_lsm%i(m)
                       j = surf_lsm%j(m)
@@ -1111,6 +1144,12 @@
 
              CASE ( 't*_xy' )        ! 2d-array
                 IF ( av == 0 )  THEN
+                   IF ( surf_def%ns > 0 )  THEN
+                      !$ACC UPDATE SELF(surf_def%ts) IF(enable_openacc)
+                   ENDIF
+                   IF ( surf_lsm%ns > 0 )  THEN
+                      !$ACC UPDATE SELF(surf_lsm%ts) IF(enable_openacc)
+                   ENDIF
                    DO  m = 1, surf_def%ns
                       i = surf_def%i(m)
                       j = surf_def%j(m)
@@ -1227,6 +1266,12 @@
 
              CASE ( 'us*_xy' )        ! 2d-array
                 IF ( av == 0 )  THEN
+                   IF ( surf_def%ns > 0 )  THEN
+                      !$ACC UPDATE SELF(surf_def%us) IF(enable_openacc)
+                   ENDIF
+                   IF ( surf_lsm%ns > 0 )  THEN
+                      !$ACC UPDATE SELF(surf_lsm%us) IF(enable_openacc)
+                   ENDIF
                    DO  m = 1, surf_def%ns
                       i = surf_def%i(m)
                       j = surf_def%j(m)
@@ -1465,7 +1510,12 @@
 
 !
 !--       Resort the array to be output, if not done above.
+          IF ( host_surface_output )  THEN
+             !$ACC UPDATE DEVICE(local_pf) IF(enable_openacc)
+          ENDIF
+
           IF ( .NOT. resorted )  THEN
+             !$ACC DATA COPYIN(to_be_resorted) IF(enable_openacc .AND. host_average)
 
 #if defined( _OPENACC )
 !
@@ -1485,6 +1535,7 @@
                 ENDDO
              ENDDO
 
+             !$ACC END DATA
           ENDIF
 !
 !--       Set fill values at topography/building grid points, but not for debugging to be able to
