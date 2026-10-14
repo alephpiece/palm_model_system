@@ -1,11 +1,11 @@
 # DTK 26.04 双卡四进程启动配置
 
 此配置已在单节点、两张 BW100、四个 Open MPI rank、`npex=npey=2` 的
-非嵌套 PALM `test` 算例验证。它只改变各 rank 的运行环境，不改变 PALM 的计算源码。
+非嵌套 PALM `test` 和多层 MG 算例验证。它只改变各 rank 的运行环境，不改变 PALM 的计算源码。
 
 启动 `palmrun` 前，将两张待用卡的容器内 HIP 编号按顺序设为
-`HIP_VISIBLE_DEVICES=0,1`。`rank-gpu.sh` 将 rank 0/3 分配给第一张卡，
-rank 1/2 分配给第二张卡。主运行命令给 MPI rank 传递 `OMP_NUM_THREADS=8`。
+`HIP_VISIBLE_DEVICES=0,1`。`rank-gpu.sh` 按本地 rank 轮转分配 GPU，并采用单卡可见策略：
+在 MPI 初始化前使每个进程只看见目标 GPU。两卡时 rank 0/2 使用第一张卡，rank 1/3 使用第二张卡。主运行命令给 MPI rank 传递 `OMP_NUM_THREADS=8`。
 脚本检查单节点四 rank；输入中的 2×2 分解仍须由 `npex`、`npey` 指定。
 
 在当前容器的 `.palm.config.dcu` 中，将运行命令设为：

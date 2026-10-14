@@ -22,8 +22,8 @@ if [[ $gpu0 == "$gpu1" ]]; then
 fi
 
 case ${OMPI_COMM_WORLD_RANK-} in
-    0|3) device=$gpu0 ;;
-    1|2) device=$gpu1 ;;
+    0|2) device=$gpu0 ;;
+    1|3) device=$gpu1 ;;
     *) printf 'rank-gpu.sh requires ranks 0..3\n' >&2; exit 2 ;;
 esac
 
