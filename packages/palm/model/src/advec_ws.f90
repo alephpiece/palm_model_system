@@ -5390,6 +5390,15 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE advec_u_ws
 
+#if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
+! Optional GPU statistics reduction; temporary storage has this call's lifetime.
+    INTEGER(iwp), PARAMETER :: ws_stat_shards = 32
+    INTEGER(iwp) :: ws_slot
+    LOGICAL :: ws_use_shards
+    REAL(wp) :: ws_contribution, ws_sum_1, ws_sum_2
+    REAL(wp) :: ws_partial(nzb+1:nzt,ws_stat_shards,2)
+#endif
+
 
     INTEGER(iwp) ::  i         !< grid index along x-direction
     INTEGER(iwp) ::  j         !< grid index along y-direction
@@ -5448,6 +5457,20 @@
     gu = 2.0_wp * u_gtrans
     gv = 2.0_wp * v_gtrans
 
+#if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
+    ws_use_shards = enable_openacc
+    !$ACC DATA CREATE(ws_partial) IF(ws_use_shards)
+    IF ( ws_use_shards ) THEN
+       !$ACC PARALLEL LOOP COLLAPSE(2) PRESENT(ws_partial)
+       DO ws_slot = 1, ws_stat_shards
+          DO k = nzb+1, nzt
+             ws_partial(k,ws_slot,1) = 0.0_wp
+             ws_partial(k,ws_slot,2) = 0.0_wp
+          ENDDO
+       ENDDO
+    ENDIF
+#endif
+
     !$ACC PARALLEL LOOP COLLAPSE(2) FIRSTPRIVATE(tn, gu, gv) &
     !$ACC PRIVATE(i, j, k, k_mm, k_pp, k_ppp) &
     !$ACC PRIVATE(ibit0, ibit1, ibit2, ibit3, ibit4, ibit5) &
@@ -5464,12 +5487,18 @@
     !$ACC PRESENT(u, v, w) &
     !$ACC PRESENT(drho_air, rho_air_zw, ddzw) &
     !$ACC PRESENT(tend) &
+#if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
+    !$ACC FIRSTPRIVATE(ws_use_shards) PRIVATE(ws_contribution,ws_slot) NO_CREATE(ws_partial) &
+#endif
     !$ACC PRESENT(hom(:,1,1:3,0)) &
     !$ACC PRESENT(weight_substep(intermediate_timestep_count)) &
     !$ACC PRESENT(sums_us2_ws_l, sums_wsus_ws_l) IF(enable_openacc)
     DO  i = nxlu, nxr
 
        DO  j = nys, nyn
+#if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
+          ws_slot = MOD((i-nxlu)*(nyn-nys+1)+j-nys,ws_stat_shards)+1
+#endif
 !
 !--       Used local modified copy of nzb_max (used to degrade order of discretization) at
 !--       non-cyclic boundaries. Modify only at relevant points instead of the entire subdomain.
@@ -5923,8 +5952,12 @@
 !
 !--          Statistical Evaluation of u'u'. The factor has to be applied for right evaluation when
 !--          gallilei_trans = .T. .
+#if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
+             ws_contribution = &
+#else
              !$ACC ATOMIC UPDATE
              sums_us2_ws_l(k,tn) = sums_us2_ws_l(k,tn) +                                           &
+#endif
                                    ( flux_r(k)                                                     &
                                      * ( u_comp(k) - 2.0_wp * hom(k,1,1,0)                   )     &
                                      / ( u_comp(k) - gu + SIGN( 1.0E-20_wp, u_comp(k) - gu ) )     &
@@ -5932,10 +5965,23 @@
                                      *   ABS( u_comp(k) - 2.0_wp * hom(k,1,1,0)              )     &
                                      / ( ABS( u_comp(k) - gu ) + 1.0E-20_wp                  )     &
                                    ) *   weight_substep(intermediate_timestep_count)
+#if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
+             IF ( ws_use_shards ) THEN
+             !$ACC ATOMIC UPDATE
+                ws_partial(k,ws_slot,1) = ws_partial(k,ws_slot,1) + ws_contribution
+             ELSE
+             !$ACC ATOMIC UPDATE
+                sums_us2_ws_l(k,tn) = sums_us2_ws_l(k,tn) + ws_contribution
+             ENDIF
+#endif
 !
 !--          Statistical Evaluation of w'u'.
+#if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
+             ws_contribution = &
+#else
              !$ACC ATOMIC UPDATE
              sums_wsus_ws_l(k,tn) = sums_wsus_ws_l(k,tn) +                                         &
+#endif
                                     ( flux_t(k)                                                    &
                                       * ( w_comp(k) - 2.0_wp * hom(k,1,3,0)                   )    &
                                       / ( w_comp(k) + SIGN( 1.0E-20_wp, w_comp(k) )           )    &
@@ -5943,6 +5989,15 @@
                                       *   ABS( w_comp(k) - 2.0_wp * hom(k,1,3,0)              )    &
                                       / ( ABS( w_comp(k) ) + 1.0E-20_wp                       )    &
                                     ) *   weight_substep(intermediate_timestep_count)
+#if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
+             IF ( ws_use_shards ) THEN
+             !$ACC ATOMIC UPDATE
+                ws_partial(k,ws_slot,2) = ws_partial(k,ws_slot,2) + ws_contribution
+             ELSE
+             !$ACC ATOMIC UPDATE
+                sums_wsus_ws_l(k,tn) = sums_wsus_ws_l(k,tn) + ws_contribution
+             ENDIF
+#endif
           ENDDO
 
           DO  k = nzb_max_l+1, nzt
@@ -5985,8 +6040,12 @@
 !
 !--          Statistical Evaluation of u'u'. The factor has to be applied for right evaluation when
 !--          gallilei_trans = .T. .
+#if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
+             ws_contribution = &
+#else
              !$ACC ATOMIC UPDATE
              sums_us2_ws_l(k,tn) = sums_us2_ws_l(k,tn) +                                           &
+#endif
                                    ( flux_r(k)                                                     &
                                      * ( u_comp(k) - 2.0_wp * hom(k,1,1,0)                   )     &
                                      / ( u_comp(k) - gu + SIGN( 1.0E-20_wp, u_comp(k) - gu ) )     &
@@ -5994,10 +6053,23 @@
                                      *   ABS( u_comp(k) - 2.0_wp * hom(k,1,1,0)              )     &
                                      / ( ABS( u_comp(k) - gu ) + 1.0E-20_wp                  )     &
                                    ) *   weight_substep(intermediate_timestep_count)
+#if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
+             IF ( ws_use_shards ) THEN
+             !$ACC ATOMIC UPDATE
+                ws_partial(k,ws_slot,1) = ws_partial(k,ws_slot,1) + ws_contribution
+             ELSE
+             !$ACC ATOMIC UPDATE
+                sums_us2_ws_l(k,tn) = sums_us2_ws_l(k,tn) + ws_contribution
+             ENDIF
+#endif
 !
 !--          Statistical Evaluation of w'u'.
+#if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
+             ws_contribution = &
+#else
              !$ACC ATOMIC UPDATE
              sums_wsus_ws_l(k,tn) = sums_wsus_ws_l(k,tn) +                                         &
+#endif
                                     ( flux_t(k)                                                    &
                                       * ( w_comp(k) - 2.0_wp * hom(k,1,3,0)                   )    &
                                       / ( w_comp(k) + SIGN( 1.0E-20_wp, w_comp(k) )           )    &
@@ -6005,9 +6077,37 @@
                                       *   ABS( w_comp(k) - 2.0_wp * hom(k,1,3,0)              )    &
                                       / ( ABS( w_comp(k) ) + 1.0E-20_wp                       )    &
                                     ) *   weight_substep(intermediate_timestep_count)
+#if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
+             IF ( ws_use_shards ) THEN
+             !$ACC ATOMIC UPDATE
+                ws_partial(k,ws_slot,2) = ws_partial(k,ws_slot,2) + ws_contribution
+             ELSE
+             !$ACC ATOMIC UPDATE
+                sums_wsus_ws_l(k,tn) = sums_wsus_ws_l(k,tn) + ws_contribution
+             ENDIF
+#endif
           ENDDO
        ENDDO
     ENDDO
+
+#if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
+    IF ( ws_use_shards ) THEN
+       !$ACC PARALLEL LOOP GANG PRIVATE(ws_sum_1,ws_sum_2) &
+       !$ACC PRESENT(ws_partial,sums_us2_ws_l,sums_wsus_ws_l)
+       DO k = nzb+1, nzt
+          ws_sum_1 = 0.0_wp
+          ws_sum_2 = 0.0_wp
+          !$ACC LOOP VECTOR REDUCTION(+:ws_sum_1,ws_sum_2)
+          DO ws_slot = 1, ws_stat_shards
+             ws_sum_1 = ws_sum_1 + ws_partial(k,ws_slot,1)
+             ws_sum_2 = ws_sum_2 + ws_partial(k,ws_slot,2)
+          ENDDO
+          sums_us2_ws_l(k,tn) = sums_us2_ws_l(k,tn) + ws_sum_1
+          sums_wsus_ws_l(k,tn) = sums_wsus_ws_l(k,tn) + ws_sum_2
+       ENDDO
+    ENDIF
+    !$ACC END DATA
+#endif
 
     CALL cpu_log( log_point_s(68), 'advec_u_ws', 'stop' )
 
@@ -6020,6 +6120,15 @@
 !> Advection of v - Call for all grid points
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE advec_v_ws
+
+#if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
+! Optional GPU statistics reduction; temporary storage has this call's lifetime.
+    INTEGER(iwp), PARAMETER :: ws_stat_shards = 32
+    INTEGER(iwp) :: ws_slot
+    LOGICAL :: ws_use_shards
+    REAL(wp) :: ws_contribution, ws_sum_1, ws_sum_2
+    REAL(wp) :: ws_partial(nzb+1:nzt,ws_stat_shards,2)
+#endif
 
 
     INTEGER(iwp) ::  i         !< grid index along x-direction
@@ -6081,6 +6190,20 @@
     gu = 2.0_wp * u_gtrans
     gv = 2.0_wp * v_gtrans
 
+#if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
+    ws_use_shards = enable_openacc
+    !$ACC DATA CREATE(ws_partial) IF(ws_use_shards)
+    IF ( ws_use_shards ) THEN
+       !$ACC PARALLEL LOOP COLLAPSE(2) PRESENT(ws_partial)
+       DO ws_slot = 1, ws_stat_shards
+          DO k = nzb+1, nzt
+             ws_partial(k,ws_slot,1) = 0.0_wp
+             ws_partial(k,ws_slot,2) = 0.0_wp
+          ENDDO
+       ENDDO
+    ENDIF
+#endif
+
     !$ACC PARALLEL LOOP COLLAPSE(2) FIRSTPRIVATE(tn, gu, gv) &
     !$ACC PRIVATE(i, j, k, k_mm, k_pp, k_ppp) &
     !$ACC PRIVATE(ibit9, ibit10, ibit11, ibit12, ibit13, ibit14) &
@@ -6097,11 +6220,17 @@
     !$ACC PRESENT(u, v, w) &
     !$ACC PRESENT(drho_air, rho_air_zw, ddzw) &
     !$ACC PRESENT(tend) &
+#if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
+    !$ACC FIRSTPRIVATE(ws_use_shards) PRIVATE(ws_contribution,ws_slot) NO_CREATE(ws_partial) &
+#endif
     !$ACC PRESENT(hom(:,1,1:3,0)) &
     !$ACC PRESENT(weight_substep(intermediate_timestep_count)) &
     !$ACC PRESENT(sums_vs2_ws_l, sums_wsvs_ws_l) IF(enable_openacc)
     DO  i = nxl, nxr
        DO  j = nysv, nyn
+#if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
+          ws_slot = MOD((i-nxl)*(nyn-nysv+1)+j-nysv,ws_stat_shards)+1
+#endif
 !
 !--       Used local modified copy of nzb_max (used to degrade order of discretization) at
 !--       non-cyclic boundaries. Modify only at relevant points instead of the entire subdomain.
@@ -6557,8 +6686,12 @@
 !
 !--          Statistical Evaluation of v'v'. The factor has to be applied for right evaluation when
 !--          gallilei_trans = .T. .
+#if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
+             ws_contribution = &
+#else
              !$ACC ATOMIC
              sums_vs2_ws_l(k,tn) = sums_vs2_ws_l(k,tn) +                                           &
+#endif
                                    ( flux_n(k)                                                     &
                                      * ( v_comp(k) - 2.0_wp * hom(k,1,2,0)                   )     &
                                      / ( v_comp(k) - gv + SIGN( 1.0E-20_wp, v_comp(k) - gv ) )     &
@@ -6566,10 +6699,23 @@
                                      *   ABS( v_comp(k) - 2.0_wp * hom(k,1,2,0)              )     &
                                      / ( ABS( v_comp(k) - gv ) + 1.0E-20_wp                  )     &
                                    ) *   weight_substep(intermediate_timestep_count)
+#if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
+             IF ( ws_use_shards ) THEN
+             !$ACC ATOMIC UPDATE
+                ws_partial(k,ws_slot,1) = ws_partial(k,ws_slot,1) + ws_contribution
+             ELSE
+             !$ACC ATOMIC UPDATE
+                sums_vs2_ws_l(k,tn) = sums_vs2_ws_l(k,tn) + ws_contribution
+             ENDIF
+#endif
 !
 !--          Statistical Evaluation of w'u'.
+#if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
+             ws_contribution = &
+#else
              !$ACC ATOMIC
              sums_wsvs_ws_l(k,tn) = sums_wsvs_ws_l(k,tn) +                                         &
+#endif
                                     ( flux_t(k)                                                    &
                                       * ( w_comp(k) - 2.0_wp * hom(k,1,3,0)                   )    &
                                       / ( w_comp(k) + SIGN( 1.0E-20_wp, w_comp(k) )           )    &
@@ -6577,6 +6723,15 @@
                                       *   ABS( w_comp(k) - 2.0_wp * hom(k,1,3,0)              )    &
                                       / ( ABS( w_comp(k) ) + 1.0E-20_wp                       )    &
                                     ) *   weight_substep(intermediate_timestep_count)
+#if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
+             IF ( ws_use_shards ) THEN
+             !$ACC ATOMIC UPDATE
+                ws_partial(k,ws_slot,2) = ws_partial(k,ws_slot,2) + ws_contribution
+             ELSE
+             !$ACC ATOMIC UPDATE
+                sums_wsvs_ws_l(k,tn) = sums_wsvs_ws_l(k,tn) + ws_contribution
+             ENDIF
+#endif
 
           ENDDO
 
@@ -6624,8 +6779,12 @@
 !
 !--          Statistical Evaluation of v'v'. The factor has to be applied for right evaluation when
 !--          gallilei_trans = .T. .
+#if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
+             ws_contribution = &
+#else
              !$ACC ATOMIC
              sums_vs2_ws_l(k,tn) = sums_vs2_ws_l(k,tn) +                                           &
+#endif
                                    ( flux_n(k)                                                     &
                                      * ( v_comp(k) - 2.0_wp * hom(k,1,2,0)                   )     &
                                      / ( v_comp(k) - gv + SIGN( 1.0E-20_wp, v_comp(k) - gv ) )     &
@@ -6633,10 +6792,23 @@
                                      *   ABS( v_comp(k) - 2.0_wp * hom(k,1,2,0)              )     &
                                      / ( ABS( v_comp(k) - gv ) + 1.0E-20_wp                  )     &
                                    ) *   weight_substep(intermediate_timestep_count)
+#if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
+             IF ( ws_use_shards ) THEN
+             !$ACC ATOMIC UPDATE
+                ws_partial(k,ws_slot,1) = ws_partial(k,ws_slot,1) + ws_contribution
+             ELSE
+             !$ACC ATOMIC UPDATE
+                sums_vs2_ws_l(k,tn) = sums_vs2_ws_l(k,tn) + ws_contribution
+             ENDIF
+#endif
 !
 !--          Statistical Evaluation of w'u'.
+#if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
+             ws_contribution = &
+#else
              !$ACC ATOMIC
              sums_wsvs_ws_l(k,tn) = sums_wsvs_ws_l(k,tn) +                                         &
+#endif
                                     ( flux_t(k)                                                    &
                                       * ( w_comp(k) - 2.0_wp * hom(k,1,3,0)                   )    &
                                       / ( w_comp(k) + SIGN( 1.0E-20_wp, w_comp(k) )           )    &
@@ -6644,11 +6816,39 @@
                                       *   ABS( w_comp(k) - 2.0_wp * hom(k,1,3,0)              )    &
                                       / ( ABS( w_comp(k) ) + 1.0E-20_wp                       )    &
                                     ) *  weight_substep(intermediate_timestep_count)
+#if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
+             IF ( ws_use_shards ) THEN
+             !$ACC ATOMIC UPDATE
+                ws_partial(k,ws_slot,2) = ws_partial(k,ws_slot,2) + ws_contribution
+             ELSE
+             !$ACC ATOMIC UPDATE
+                sums_wsvs_ws_l(k,tn) = sums_wsvs_ws_l(k,tn) + ws_contribution
+             ENDIF
+#endif
 
           ENDDO
 
        ENDDO
     ENDDO
+
+#if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
+    IF ( ws_use_shards ) THEN
+       !$ACC PARALLEL LOOP GANG PRIVATE(ws_sum_1,ws_sum_2) &
+       !$ACC PRESENT(ws_partial,sums_vs2_ws_l,sums_wsvs_ws_l)
+       DO k = nzb+1, nzt
+          ws_sum_1 = 0.0_wp
+          ws_sum_2 = 0.0_wp
+          !$ACC LOOP VECTOR REDUCTION(+:ws_sum_1,ws_sum_2)
+          DO ws_slot = 1, ws_stat_shards
+             ws_sum_1 = ws_sum_1 + ws_partial(k,ws_slot,1)
+             ws_sum_2 = ws_sum_2 + ws_partial(k,ws_slot,2)
+          ENDDO
+          sums_vs2_ws_l(k,tn) = sums_vs2_ws_l(k,tn) + ws_sum_1
+          sums_wsvs_ws_l(k,tn) = sums_wsvs_ws_l(k,tn) + ws_sum_2
+       ENDDO
+    ENDIF
+    !$ACC END DATA
+#endif
 
     CALL cpu_log( log_point_s(69), 'advec_v_ws', 'stop' )
 
@@ -6661,6 +6861,16 @@
 !> Advection of w - Call for all grid points
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE advec_w_ws
+
+#if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
+! Optional GPU statistics reduction; temporary storage has this call's lifetime.
+    INTEGER(iwp), PARAMETER :: ws_stat_shards = 32
+    INTEGER(iwp) :: ws_slot
+    LOGICAL :: ws_use_shards
+    REAL(wp) :: ws_contribution, ws_sum_1
+    REAL(wp) :: ws_partial(nzb+1:nzt,ws_stat_shards,1)
+    INTEGER(iwp) :: ws_k_end
+#endif
 
 
     INTEGER(iwp) ::  i         !< grid index along x-direction
@@ -6723,6 +6933,28 @@
     gu = 2.0_wp * u_gtrans
     gv = 2.0_wp * v_gtrans
 
+#if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
+    ws_use_shards = enable_openacc
+! The lower-order branch can extend to nzt when topography reaches the top.
+! Boundary columns instead stop at nzt-1; preserve untouched top statistics.
+    ws_k_end = nzt - 1
+    IF ( nxr-nxl+1 > MERGE(3,0,bc_dirichlet_l .OR. bc_radiation_l) + &
+                      MERGE(3,0,bc_dirichlet_r .OR. bc_radiation_r) .AND. &
+         nyn-nys+1 > MERGE(3,0,bc_dirichlet_s .OR. bc_radiation_s) + &
+                      MERGE(3,0,bc_dirichlet_n .OR. bc_radiation_n) ) THEN
+       ws_k_end = MAX(ws_k_end,nzb_max)
+    ENDIF
+    !$ACC DATA CREATE(ws_partial) IF(ws_use_shards)
+    IF ( ws_use_shards ) THEN
+       !$ACC PARALLEL LOOP COLLAPSE(2) PRESENT(ws_partial)
+       DO ws_slot = 1, ws_stat_shards
+          DO k = nzb+1, nzt
+             ws_partial(k,ws_slot,1) = 0.0_wp
+          ENDDO
+       ENDDO
+    ENDIF
+#endif
+
     !$ACC PARALLEL LOOP COLLAPSE(2) FIRSTPRIVATE(tn, gu, gv) &
     !$ACC PRIVATE(i, j, k, k_mm, k_pp, k_ppp) &
     !$ACC PRIVATE(ibit18, ibit19, ibit20, ibit21, ibit22, ibit23) &
@@ -6739,6 +6971,9 @@
     !$ACC PRESENT(u, v, w) &
     !$ACC PRESENT(drho_air, rho_air_zw, ddzw) &
     !$ACC PRESENT(tend) &
+#if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
+    !$ACC FIRSTPRIVATE(ws_use_shards) PRIVATE(ws_contribution,ws_slot) NO_CREATE(ws_partial) &
+#endif
     !$ACC PRESENT(hom(:,1,1:3,0)) &
     !$ACC PRESENT(weight_substep(intermediate_timestep_count)) &
     !$ACC PRESENT(sums_ws2_ws_l) &
@@ -6746,6 +6981,9 @@
     !$ACC IF(enable_openacc)
     DO  i = nxl, nxr
        DO  j = nys, nyn
+#if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
+          ws_slot = MOD((i-nxl)*(nyn-nys+1)+j-nys,ws_stat_shards)+1
+#endif
 !
 !--       Used local modified copy of nzb_max (used to degrade order of discretization) at
 !--       non-cyclic boundaries. Modify only at relevant points instead of the entire subdomain.
@@ -7190,8 +7428,12 @@
 #endif
 !
 !--          Statistical Evaluation of w'w'.
+#if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
+             ws_contribution = &
+#else
              !$ACC ATOMIC UPDATE
              sums_ws2_ws_l(k,tn)  = sums_ws2_ws_l(k,tn) +                                          &
+#endif
                                     ( flux_t(k)                                                    &
                                       * ( w_comp(k) - 2.0_wp * hom(k,1,3,0)           )            &
                                       / ( w_comp(k) + SIGN( 1.0E-20_wp, w_comp(k) )   )            &
@@ -7199,6 +7441,15 @@
                                       *   ABS( w_comp(k) - 2.0_wp * hom(k,1,3,0)      )            &
                                       / ( ABS( w_comp(k) ) + 1.0E-20_wp               )            &
                                     ) *   weight_substep(intermediate_timestep_count)
+#if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
+             IF ( ws_use_shards ) THEN
+             !$ACC ATOMIC UPDATE
+                ws_partial(k,ws_slot,1) = ws_partial(k,ws_slot,1) + ws_contribution
+             ELSE
+             !$ACC ATOMIC UPDATE
+                sums_ws2_ws_l(k,tn) = sums_ws2_ws_l(k,tn) + ws_contribution
+             ENDIF
+#endif
 
           ENDDO
 
@@ -7241,8 +7492,12 @@
 #endif
 !
 !--          Statistical Evaluation of w'w'.
+#if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
+             ws_contribution = &
+#else
              !$ACC ATOMIC UPDATE
              sums_ws2_ws_l(k,tn)  = sums_ws2_ws_l(k,tn) +                                          &
+#endif
                                     ( flux_t(k)                                                    &
                                       * ( w_comp(k) - 2.0_wp * hom(k,1,3,0)          )             &
                                       / ( w_comp(k) + SIGN( 1.0E-20_wp, w_comp(k) )  )             &
@@ -7250,11 +7505,36 @@
                                       *   ABS( w_comp(k) - 2.0_wp * hom(k,1,3,0)     )             &
                                       / ( ABS( w_comp(k) ) + 1.0E-20_wp              )             &
                                     ) *   weight_substep(intermediate_timestep_count)
+#if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
+             IF ( ws_use_shards ) THEN
+             !$ACC ATOMIC UPDATE
+                ws_partial(k,ws_slot,1) = ws_partial(k,ws_slot,1) + ws_contribution
+             ELSE
+             !$ACC ATOMIC UPDATE
+                sums_ws2_ws_l(k,tn) = sums_ws2_ws_l(k,tn) + ws_contribution
+             ENDIF
+#endif
 
           ENDDO
 
        ENDDO
     ENDDO
+
+#if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
+    IF ( ws_use_shards ) THEN
+       !$ACC PARALLEL LOOP GANG PRIVATE(ws_sum_1) &
+       !$ACC PRESENT(ws_partial,sums_ws2_ws_l)
+       DO k = nzb+1, ws_k_end
+          ws_sum_1 = 0.0_wp
+          !$ACC LOOP VECTOR REDUCTION(+:ws_sum_1)
+          DO ws_slot = 1, ws_stat_shards
+             ws_sum_1 = ws_sum_1 + ws_partial(k,ws_slot,1)
+          ENDDO
+          sums_ws2_ws_l(k,tn) = sums_ws2_ws_l(k,tn) + ws_sum_1
+       ENDDO
+    ENDIF
+    !$ACC END DATA
+#endif
 
     CALL cpu_log( log_point_s(87), 'advec_w_ws', 'stop' )
 
