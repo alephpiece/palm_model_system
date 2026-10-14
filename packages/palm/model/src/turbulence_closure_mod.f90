@@ -161,6 +161,10 @@
                hom_sum,                                                                            &
                statistic_regions
 
+#if defined( _OPENACC )
+    USE surface_mod, ONLY:  bc_copy_m, bc_copy_n, bc_copy_ready
+#endif
+
     USE surface_mod,                                                                               &
         ONLY:  bc_hv,                                                                              &
                surf_def,                                                                           &
@@ -4684,6 +4688,9 @@
     INTEGER(iwp) ::  j  !< loop index
     INTEGER(iwp) ::  k  !< loop index
     INTEGER(iwp) ::  m  !< loop index
+#if defined( _OPENACC )
+    INTEGER(iwp) ::  n  !< index over distinct boundary points
+#endif
 
     REAL(wp) ::  consider_phi_m !< dummy variable for stability correction (only employed at horizontal walls)
     REAL(wp) ::  var_reference  !< reference temperature
@@ -4769,6 +4776,20 @@
 !--    Set boundary values (Neumann conditions) at surfaces.
 !--    Note, at corners the boundary condition for km is overdetermined and the boundary value
 !--    depends on the order how surfaces are accessed.
+#if defined( _OPENACC )
+       IF ( enable_openacc .AND. bc_copy_ready )  THEN
+          !$ACC PARALLEL LOOP PRIVATE(m,i,j,k) PRESENT(bc_hv,bc_copy_m,kh,km)
+          DO  n = 1, bc_copy_n
+             m = bc_copy_m(n)
+             i = bc_hv%i(m)
+             j = bc_hv%j(m)
+             k = bc_hv%k(m)
+             km(k+bc_hv%koff(m),j+bc_hv%joff(m),i+bc_hv%ioff(m)) = km(k,j,i)
+             kh(k+bc_hv%koff(m),j+bc_hv%joff(m),i+bc_hv%ioff(m)) = kh(k,j,i)
+          ENDDO
+          !$ACC END PARALLEL LOOP
+       ELSE
+#endif
        !$OMP PARALLEL DO PRIVATE(i,j,k)
        !$ACC PARALLEL LOOP SEQ PRIVATE(i,j,k) &
        !$ACC PRESENT(bc_hv, kh, km) IF(enable_openacc)
@@ -4782,6 +4803,9 @@
           km(k+bc_hv%koff(m),j+bc_hv%joff(m),i+bc_hv%ioff(m)) = km(k,j,i)
           kh(k+bc_hv%koff(m),j+bc_hv%joff(m),i+bc_hv%ioff(m)) = kh(k,j,i)
        ENDDO
+#if defined( _OPENACC )
+       ENDIF
+#endif
     ENDIF
 !
 !-- Model top

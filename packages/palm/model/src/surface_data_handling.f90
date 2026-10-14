@@ -191,6 +191,11 @@
 
     INTEGER(idp), DIMENSION(:), ALLOCATABLE ::  bgp_id !< list of boundary-grid point IDs
 
+#if defined( _OPENACC )
+!  Reinitializing geometry invalidates both lists. They are rebuilt at device-data entry.
+    CALL clear_surface_copy_maps
+#endif
+
 !
 !-- Initialize data structure for horizontal surfaces, i.e. count the number of surface elements,
 !-- allocate and initialize the respective index arrays, and set the respective start and end
@@ -595,6 +600,28 @@
     INTEGER(iwp), INTENT(IN) ::  nzt_soil  !< upper soil index
 
 
+!  Build from the final local geometry, after initialization/restart restoration.
+!  Empty lists keep the original zero-trip path and require no device allocation.
+    CALL clear_surface_copy_maps
+    IF ( enable_openacc )  THEN
+       IF ( surf_lsm%ns > 0 )  THEN
+          CALL build_surface_copy_map( surf_lsm%ns, surf_lsm%i, surf_lsm%j, surf_lsm%k,             &
+                                       surf_lsm%ioff, surf_lsm%joff, surf_lsm%koff,                &
+                                       lsm_copy_m, lsm_copy_n, lsm_copy_ready )
+          IF ( lsm_copy_ready )  THEN
+             !$ACC ENTER DATA COPYIN(lsm_copy_m)
+          ENDIF
+       ENDIF
+       IF ( bc_hv%ns > 0 )  THEN
+          CALL build_surface_copy_map( bc_hv%ns, bc_hv%i, bc_hv%j, bc_hv%k,                         &
+                                       bc_hv%ioff, bc_hv%joff, bc_hv%koff,                         &
+                                       bc_copy_m, bc_copy_n, bc_copy_ready )
+          IF ( bc_copy_ready )  THEN
+             !$ACC ENTER DATA COPYIN(bc_copy_m)
+          ENDIF
+       ENDIF
+    ENDIF
+
 !
 !-- Copy data in surf_def, surf_lsm, and surf_usm.
     CALL enter_surface_attributes_def
@@ -624,6 +651,9 @@
 #if defined( _OPENACC )
  SUBROUTINE exit_surface_arrays
 !
+!-- These lists were mapped only when acceleration was enabled at entry.
+    CALL clear_surface_copy_maps
+!
 !-- Delete data in surf_def, surf_lsm, surf_usm and surf_top
     CALL exit_surface_attributes( surf_def )
     CALL exit_surface_attributes( surf_lsm )
@@ -637,6 +667,89 @@
     !$ACC DELETE(surf_usm) IF(enable_openacc)
 
  END SUBROUTINE exit_surface_arrays
+#endif
+
+!--------------------------------------------------------------------------------------------------!
+! Description:
+! ------------
+!> Build a last-writer list for ordered in-place boundary copies. Parallel copying is safe only
+!> when no source is also a destination. Invalid geometry or allocation failure keeps the SEQ path.
+!--------------------------------------------------------------------------------------------------!
+#if defined( _OPENACC )
+ SUBROUTINE build_surface_copy_map( ns, is, js, ks, io, jo, ko, winner, nwinner, ready )
+
+    IMPLICIT NONE
+
+    INTEGER(iwp), INTENT(IN) ::  ns
+    INTEGER(iwp), INTENT(IN) ::  is(ns), js(ns), ks(ns), io(ns), jo(ns), ko(ns)
+    INTEGER(iwp), ALLOCATABLE, INTENT(OUT) ::  winner(:)
+    INTEGER(iwp), INTENT(OUT) ::  nwinner
+    LOGICAL, INTENT(OUT) ::  ready
+
+    INTEGER(iwp) ::  m, i, j, k, ierr
+    INTEGER(iwp), ALLOCATABLE ::  last(:,:,:)
+
+    ready = .FALSE.
+    nwinner = 0
+    IF ( ns <= 0 )  RETURN
+
+!  The temporary grid is released on return; only the compact index list is retained.
+    ALLOCATE( last(nzb:nzt+1,nysg:nyng,nxlg:nxrg), STAT=ierr )
+    IF ( ierr /= 0 )  RETURN
+    last = 0
+    DO  m = 1, ns
+       i = is(m)
+       j = js(m)
+       k = ks(m)
+       IF ( i < nxlg .OR. i > nxrg .OR. j < nysg .OR. j > nyng .OR.                     &
+            k < nzb .OR. k > nzt+1 )  RETURN
+       i = i + io(m)
+       j = j + jo(m)
+       k = k + ko(m)
+       IF ( i < nxlg .OR. i > nxrg .OR. j < nysg .OR. j > nyng .OR.                     &
+            k < nzb .OR. k > nzt+1 )  RETURN
+       last(k,j,i) = m
+    ENDDO
+
+    DO  m = 1, ns
+       IF ( last(ks(m),js(m),is(m)) /= 0 )  RETURN
+       IF ( last(ks(m)+ko(m),js(m)+jo(m),is(m)+io(m)) == m )  nwinner = nwinner + 1
+    ENDDO
+    ALLOCATE( winner(nwinner), STAT=ierr )
+    IF ( ierr /= 0 )  THEN
+       nwinner = 0
+       RETURN
+    ENDIF
+    nwinner = 0
+    DO  m = 1, ns
+       IF ( last(ks(m)+ko(m),js(m)+jo(m),is(m)+io(m)) == m )  THEN
+          nwinner = nwinner + 1
+          winner(nwinner) = m
+       ENDIF
+    ENDDO
+    ready = .TRUE.
+
+ END SUBROUTINE build_surface_copy_map
+
+!--------------------------------------------------------------------------------------------------!
+!> Release lists before their source geometry is changed or surface device data is left.
+!--------------------------------------------------------------------------------------------------!
+ SUBROUTINE clear_surface_copy_maps
+
+    lsm_copy_ready = .FALSE.
+    bc_copy_ready = .FALSE.
+    lsm_copy_n = 0
+    bc_copy_n = 0
+    IF ( ALLOCATED( lsm_copy_m ) )  THEN
+       !$ACC EXIT DATA DELETE(lsm_copy_m)
+       DEALLOCATE( lsm_copy_m )
+    ENDIF
+    IF ( ALLOCATED( bc_copy_m ) )  THEN
+       !$ACC EXIT DATA DELETE(bc_copy_m)
+       DEALLOCATE( bc_copy_m )
+    ENDIF
+
+ END SUBROUTINE clear_surface_copy_maps
 #endif
 
 !--------------------------------------------------------------------------------------------------!
@@ -1721,6 +1834,11 @@
     LOGICAL ::  skip_init_upward_top !< flag to control initialization of upward-top arrays
     LOGICAL ::  terrain              !< flag indicating natural terrain grid point
     LOGICAL ::  unresolved_building  !< flag indicating a grid point where actually a building is defined but not resolved by the grid
+
+#if defined( _OPENACC )
+!  Reinitializing geometry invalidates both lists. They are rebuilt at device-data entry.
+    CALL clear_surface_copy_maps
+#endif
 
 !
 !-- Initialize surface attributes, store indicies, surfaces orientation, etc.,

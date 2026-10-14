@@ -850,6 +850,14 @@
 
     END TYPE surf_type_cct
 
+#if defined( _OPENACC )
+!  Last surface element writing each distinct boundary point. These lists belong to the
+!  enter_surface_arrays / exit_surface_arrays device lifetime, not to a prognostic field.
+    INTEGER(iwp), ALLOCATABLE ::  lsm_copy_m(:), bc_copy_m(:)
+    INTEGER(iwp) ::  lsm_copy_n = 0, bc_copy_n = 0
+    LOGICAL ::  lsm_copy_ready = .FALSE., bc_copy_ready = .FALSE.
+#endif
+
     TYPE (bc_type) ::  bc_hv  !< data structure that includes all surface-adjacent grid points, used to set boundary conditions
 
     TYPE(surf_out_type) ::  surf_out  !< variable which contains all surface output information
@@ -899,6 +907,9 @@
     SAVE
 
     PRIVATE
+#if defined( _OPENACC )
+    PUBLIC ::  lsm_copy_m, lsm_copy_n, lsm_copy_ready, bc_copy_m, bc_copy_n, bc_copy_ready
+#endif
 !
 !-- Public variables
     PUBLIC albedo_urb,                                                                             &

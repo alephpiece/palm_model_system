@@ -183,6 +183,10 @@
     USE surface_data_handling,                                                                     &
         ONLY :  surface_restore_elements
 
+#if defined( _OPENACC )
+    USE surface_mod, ONLY:  lsm_copy_m, lsm_copy_n, lsm_copy_ready
+#endif
+
     USE surface_mod,                                                                               &
         ONLY :  ind_pav_green,                                                                     &
                 ind_veg_wall,                                                                      &
@@ -732,6 +736,44 @@
     INTEGER(iwp) :: k      !< grid index z-direction
     INTEGER(iwp) :: koff   !< offset index x-direction indicating location of soil grid point
     INTEGER(iwp) :: m      !< running index surface elements
+#if defined( _OPENACC )
+    INTEGER(iwp) :: n      !< running index over distinct boundary points
+#endif
+
+#if defined( _OPENACC )
+!  Only the final writer of each distinct soil point is needed. The construction of this
+!  list also checked that none of the copied source values can be overwritten by this loop.
+    IF ( enable_openacc .AND. lsm_copy_ready )  THEN
+       !$ACC PARALLEL LOOP DEFAULT(PRESENT) PRIVATE(m,i,j,k,ioff,joff,koff)
+       DO  n = 1, lsm_copy_n
+          m = lsm_copy_m(n)
+          ioff = surf_lsm%ioff(m)
+          joff = surf_lsm%joff(m)
+          koff = surf_lsm%koff(m)
+          i = surf_lsm%i(m)
+          j = surf_lsm%j(m)
+          k = surf_lsm%k(m)
+          pt(k+koff,j+joff,i+ioff) = pt(k,j,i)
+       ENDDO
+       !$ACC END PARALLEL LOOP
+       IF ( humidity )  THEN
+          !$ACC PARALLEL LOOP DEFAULT(PRESENT) PRIVATE(m,i,j,k,ioff,joff,koff)
+          DO  n = 1, lsm_copy_n
+             m = lsm_copy_m(n)
+             ioff = surf_lsm%ioff(m)
+             joff = surf_lsm%joff(m)
+             koff = surf_lsm%koff(m)
+             i = surf_lsm%i(m)
+             j = surf_lsm%j(m)
+             k = surf_lsm%k(m)
+             q(k+koff,j+joff,i+ioff) = q(k,j,i)
+             vpt(k+koff,j+joff,i+ioff) = vpt(k,j,i)
+          ENDDO
+          !$ACC END PARALLEL LOOP
+       ENDIF
+       RETURN
+    ENDIF
+#endif
 
 !
 !-- Surface elements can share a soil point; retain the original overwrite order.
