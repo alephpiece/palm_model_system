@@ -2176,21 +2176,24 @@
 
        IMPLICIT NONE
 
+#if defined( _OPENACC )
+       INTEGER(iwp) :: n          !< index over distinct soil points
+#endif
+
        REAL(wp) ::  e_s           !< saturation water vapor pressure
        REAL(wp) ::  q_s           !< saturation mixing ratio
        REAL(wp) ::  resistance    !< aerodynamic and soil resistance term
 
 
-       !$OMP PARALLEL DO PRIVATE (m, i, j, k, i_off, j_off, k_off, e_s, q_s, resistance) SCHEDULE (STATIC)
+       IF ( surf_lsm%ns == 0 )  RETURN
+
+       !$OMP PARALLEL DO PRIVATE (m, i, j, k, e_s, q_s, resistance) SCHEDULE (STATIC)
        !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) COPYIN(ql) IF(enable_openacc)
        DO  m = 1, surf_lsm%ns
 
           i = surf_lsm%i(m)
           j = surf_lsm%j(m)
           k = surf_lsm%k(m)
-          i_off = surf_lsm%ioff(m)
-          j_off = surf_lsm%joff(m)
-          k_off = surf_lsm%koff(m)
 !
 !--       Calculate water vapour pressure at saturation and convert to hPa
           e_s = 0.01_wp * magnus( MIN( t_surface_p%var_1d(m), 333.15_wp ) )
@@ -2204,19 +2207,54 @@
 !
 !--       Calculate mixing ratio at surface
           IF ( bulk_cloud_model )  THEN
-             q(k+k_off,j+j_off,i+i_off) = resistance * q_s +                                       &
-                                          ( 1.0_wp - resistance ) * ( q(k,j,i) - ql(k,j,i) )
+             surf_lsm%q_surface(m) = resistance * q_s +                                           &
+                                     ( 1.0_wp - resistance ) * ( q(k,j,i) - ql(k,j,i) )
           ELSE
-             q(k+k_off,j+j_off,i+i_off) = resistance * q_s +                                       &
-                                          ( 1.0_wp - resistance ) * q(k,j,i)
+             surf_lsm%q_surface(m) = resistance * q_s +                                           &
+                                     ( 1.0_wp - resistance ) * q(k,j,i)
           ENDIF
 
-          surf_lsm%q_surface(m) = q(k+k_off,j+j_off,i+i_off)
 !
 !--       Update virtual potential temperature
           surf_lsm%vpt_surface(m) = surf_lsm%pt_surface(m) *                                       &
                                     ( 1.0_wp + 0.61_wp * surf_lsm%q_surface(m) )
 
+       ENDDO
+       !$ACC END PARALLEL LOOP
+       !$OMP END PARALLEL DO
+!
+!--    Surface elements can share a soil point. Save each face's state before writing
+!--    the grid, then retain the original serial last-writer order for grid humidity.
+!--    The grid value is also used during spinup, without lsm_boundary_condition.
+#if defined( _OPENACC )
+!--    Reuse the boundary-copy list; its construction also checks source/target independence.
+       IF ( enable_openacc .AND. lsm_copy_ready )  THEN
+          !$ACC PARALLEL LOOP DEFAULT(PRESENT) PRIVATE(m,i,j,k,i_off,j_off,k_off)
+          DO  n = 1, lsm_copy_n
+             m = lsm_copy_m(n)
+             i = surf_lsm%i(m)
+             j = surf_lsm%j(m)
+             k = surf_lsm%k(m)
+             i_off = surf_lsm%ioff(m)
+             j_off = surf_lsm%joff(m)
+             k_off = surf_lsm%koff(m)
+             q(k+k_off,j+j_off,i+i_off) = surf_lsm%q_surface(m)
+          ENDDO
+          !$ACC END PARALLEL LOOP
+          RETURN
+       ENDIF
+#endif
+
+       !$ACC PARALLEL LOOP SEQ DEFAULT(PRESENT) &
+       !$ACC PRIVATE(i, j, k, i_off, j_off, k_off) IF(enable_openacc)
+       DO  m = 1, surf_lsm%ns
+          i = surf_lsm%i(m)
+          j = surf_lsm%j(m)
+          k = surf_lsm%k(m)
+          i_off = surf_lsm%ioff(m)
+          j_off = surf_lsm%joff(m)
+          k_off = surf_lsm%koff(m)
+          q(k+k_off,j+j_off,i+i_off) = surf_lsm%q_surface(m)
        ENDDO
        !$ACC END PARALLEL LOOP
 
