@@ -3670,6 +3670,15 @@
     CHARACTER (LEN = *), INTENT(IN) ::  sk_char !< string identifier, used for assign fluxes
                                                 !< to the correct dimension in the analysis array
 
+#if defined( _OPENACC ) && defined( __palm_ws_sharded_stats )
+!   Distribute horizontal-column updates over a small set of height profiles.
+!   The workspace belongs to this invocation; no device mapping survives the DATA region.
+    INTEGER(iwp), PARAMETER :: ws_stat_shards = 32
+    INTEGER(iwp) :: ws_slot
+    LOGICAL :: ws_use_shards
+    REAL(wp) :: ws_contribution, ws_sum
+    REAL(wp) :: ws_partial(nzb+1:nzt,ws_stat_shards)
+#endif
     INTEGER(iwp) ::  i         !< grid index along x-direction
     INTEGER(iwp) ::  j         !< grid index along y-direction
     INTEGER(iwp) ::  k         !< grid index along z-direction
@@ -3781,6 +3790,19 @@
 
     END SELECT
 
+#if defined( _OPENACC ) && defined( __palm_ws_sharded_stats )
+    ws_use_shards = enable_openacc .AND. ( sk_num == 1 .OR. sk_num == 3 )
+    !$ACC DATA CREATE(ws_partial) IF(ws_use_shards)
+    IF ( ws_use_shards ) THEN
+       !$ACC PARALLEL LOOP COLLAPSE(2) PRESENT(ws_partial)
+       DO ws_slot = 1, ws_stat_shards
+          DO k = nzb+1, nzt
+             ws_partial(k,ws_slot) = 0.0_wp
+          ENDDO
+       ENDDO
+    ENDIF
+#endif
+
     !$ACC PARALLEL LOOP COLLAPSE(2) FIRSTPRIVATE(tn, sk_num) &
     !$ACC PRIVATE(i, j, k, k_mm, k_pp, k_ppp) &
     !$ACC PRIVATE(ibit0, ibit1, ibit2, ibit3, ibit4, ibit5) &
@@ -3796,6 +3818,9 @@
     !$ACC PRESENT(sk, u, v, w, u_stokes_zu, v_stokes_zu) &
     !$ACC PRESENT(drho_air, rho_air_zw, ddzw) &
     !$ACC PRESENT(tend) &
+#if defined( _OPENACC ) && defined( __palm_ws_sharded_stats )
+    !$ACC FIRSTPRIVATE(ws_use_shards) PRIVATE(ws_contribution,ws_slot) NO_CREATE(ws_partial) &
+#endif
     !$ACC PRESENT(hom(:,1,1:3,0)) &
     !$ACC PRESENT(weight_substep(intermediate_timestep_count)) &
     !$ACC PRESENT(sums_wspts_ws_l) &
@@ -4362,8 +4387,12 @@
 
              CASE ( 1 )
                 DO  k = nzb+1, nzt
+#if defined( _OPENACC ) && defined( __palm_ws_sharded_stats )
+                   ws_contribution = &
+#else
                    !$ACC ATOMIC UPDATE
                    sums_wspts_ws_l(k,tn) = sums_wspts_ws_l(k,tn) +                                 &
+#endif
                                            ( flux_t(k)                                             &
                                                / ( w(k,j,i) + SIGN( 1.0E-20_wp, w(k,j,i) ) )       &
                                                * ( w(k,j,i) - hom(k,1,3,0)                 )       &
@@ -4371,6 +4400,16 @@
                                                / ( ABS(w(k,j,i)) + 1.0E-20_wp              )       &
                                                *   ABS(w(k,j,i)  - hom(k,1,3,0)            )       &
                                            ) * weight_substep(intermediate_timestep_count)
+#if defined( _OPENACC ) && defined( __palm_ws_sharded_stats )
+                   IF ( ws_use_shards ) THEN
+                      ws_slot = MOD((i-nxl)*(nyn-nys+1)+j-nys,ws_stat_shards)+1
+                      !$ACC ATOMIC UPDATE
+                      ws_partial(k,ws_slot) = ws_partial(k,ws_slot) + ws_contribution
+                   ELSE
+                      !$ACC ATOMIC UPDATE
+                      sums_wspts_ws_l(k,tn) = sums_wspts_ws_l(k,tn) + ws_contribution
+                   ENDIF
+#endif
                 ENDDO
 
              CASE ( 2 )
@@ -4388,8 +4427,12 @@
 
              CASE ( 3 )
                 DO  k = nzb+1, nzt
+#if defined( _OPENACC ) && defined( __palm_ws_sharded_stats )
+                   ws_contribution = &
+#else
                    !$ACC ATOMIC UPDATE
                    sums_wsqs_ws_l(k,tn)  = sums_wsqs_ws_l(k,tn) +                                  &
+#endif
                                            ( flux_t(k)                                             &
                                                / ( w(k,j,i) + SIGN( 1.0E-20_wp, w(k,j,i) ) )       &
                                                * ( w(k,j,i) - hom(k,1,3,0)                 )       &
@@ -4397,6 +4440,16 @@
                                                / ( ABS(w(k,j,i)) + 1.0E-20_wp              )       &
                                                *   ABS(w(k,j,i)  - hom(k,1,3,0)            )       &
                                            ) * weight_substep(intermediate_timestep_count)
+#if defined( _OPENACC ) && defined( __palm_ws_sharded_stats )
+                   IF ( ws_use_shards ) THEN
+                      ws_slot = MOD((i-nxl)*(nyn-nys+1)+j-nys,ws_stat_shards)+1
+                      !$ACC ATOMIC UPDATE
+                      ws_partial(k,ws_slot) = ws_partial(k,ws_slot) + ws_contribution
+                   ELSE
+                      !$ACC ATOMIC UPDATE
+                      sums_wsqs_ws_l(k,tn) = sums_wsqs_ws_l(k,tn) + ws_contribution
+                   ENDIF
+#endif
                 ENDDO
 
              CASE ( 4 )
@@ -4561,6 +4614,31 @@
        ENDDO
     ENDDO
 
+#if defined( _OPENACC ) && defined( __palm_ws_sharded_stats )
+    IF ( ws_use_shards .AND. sk_num == 1 ) THEN
+       !$ACC PARALLEL LOOP GANG PRIVATE(ws_sum) PRESENT(ws_partial,sums_wspts_ws_l)
+       DO k = nzb+1, nzt
+          ws_sum = 0.0_wp
+          !$ACC LOOP VECTOR REDUCTION(+:ws_sum)
+          DO ws_slot = 1, ws_stat_shards
+             ws_sum = ws_sum + ws_partial(k,ws_slot)
+          ENDDO
+          sums_wspts_ws_l(k,tn) = sums_wspts_ws_l(k,tn) + ws_sum
+       ENDDO
+    ENDIF
+    IF ( ws_use_shards .AND. sk_num == 3 ) THEN
+       !$ACC PARALLEL LOOP GANG PRIVATE(ws_sum) PRESENT(ws_partial,sums_wsqs_ws_l)
+       DO k = nzb+1, nzt
+          ws_sum = 0.0_wp
+          !$ACC LOOP VECTOR REDUCTION(+:ws_sum)
+          DO ws_slot = 1, ws_stat_shards
+             ws_sum = ws_sum + ws_partial(k,ws_slot)
+          ENDDO
+          sums_wsqs_ws_l(k,tn) = sums_wsqs_ws_l(k,tn) + ws_sum
+       ENDDO
+    ENDIF
+    !$ACC END DATA
+#endif
     CALL cpu_log( log_point_s(49), 'advec_s_ws', 'stop' )
 
  END SUBROUTINE advec_s_ws

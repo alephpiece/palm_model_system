@@ -20,3 +20,18 @@
 `palmrun` 默认会对整个主运行命令做字符串替换，
 脚本路径中的 `palm_model_system` 也会被误改。输出合并只用一个进程，
 不经过四 rank 的包装脚本。
+
+## WS 标量统计归约候选
+
+`research/ws-scalar-reduction` 分支提供可选的 pt/q 统计分片实现。
+在 BW100 OpenACC 构建的 `%cpp_options` 中增加 `-D__palm_ws_sharded_stats`，
+重新编译 `advec_ws.f90` 并链接程序即可启用。其它源码不使用此宏。
+H100 构建不启用，未使用 OpenACC 的构建也保持原实现。
+
+该实现将原先对每个高度的原子累加分散到 32 个槽，再按高度归并到原统计数组，
+保留 RK 子步累积。工作区为调用局部自动数组，以结构化 DATA 区管理设备映射，
+占用 `(nzt-nzb) × 32 × sizeof(wp)` 字节，不跨调用缓存。
+
+此候选面向 `enable_openacc=.TRUE.` 的 GPU 执行。
+DTK 26.04 下，原版与候选的 OpenACC 运行时 CPU 回退均可触发 PRESENT 映射错误，
+不能将这一模式视为已通过验证。CPU 构建与 OpenACC 运行时回退是不同路径。
