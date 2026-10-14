@@ -7190,6 +7190,7 @@
 #endif
 !
 !--          Statistical Evaluation of w'w'.
+             !$ACC ATOMIC UPDATE
              sums_ws2_ws_l(k,tn)  = sums_ws2_ws_l(k,tn) +                                          &
                                     ( flux_t(k)                                                    &
                                       * ( w_comp(k) - 2.0_wp * hom(k,1,3,0)           )            &
