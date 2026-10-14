@@ -4771,7 +4771,7 @@
           kh(k,j,i) = 1.35_wp * km(k,j,i)
        ENDDO
 
-    ELSE
+    ELSEIF ( bc_hv%ns > 0 )  THEN
 !
 !--    Set boundary values (Neumann conditions) at surfaces.
 !--    Note, at corners the boundary condition for km is overdetermined and the boundary value

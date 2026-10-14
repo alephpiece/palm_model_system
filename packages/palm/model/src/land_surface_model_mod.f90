@@ -740,6 +740,8 @@
     INTEGER(iwp) :: n      !< running index over distinct boundary points
 #endif
 
+    IF ( surf_lsm%ns == 0 )  RETURN
+
 #if defined( _OPENACC )
 !  Only the final writer of each distinct soil point is needed. The construction of this
 !  list also checked that none of the copied source values can be overwritten by this loop.

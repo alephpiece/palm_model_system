@@ -601,7 +601,7 @@
 
 
 !  Build from the final local geometry, after initialization/restart restoration.
-!  Empty lists keep the original zero-trip path and require no device allocation.
+!  Empty lists are skipped by the copy routines and require no device allocation.
     CALL clear_surface_copy_maps
     IF ( enable_openacc )  THEN
        IF ( surf_lsm%ns > 0 )  THEN
@@ -645,8 +645,8 @@
 ! ------------
 !> Exit horizontal and vertical surfaces.
 !> ATTENTION: This routine and the called subroutines have not been updated to the newest
-!>            versions of enter_surface_arrays. They may be completely removed, because there is
-!>            no real need to delete the arrays from the device at the end of a run.
+!>            versions of enter_surface_arrays. This warning concerns legacy surface attributes.
+!>            Keep clear_surface_copy_maps paired with construction of the copy maps.
 !--------------------------------------------------------------------------------------------------!
 #if defined( _OPENACC )
  SUBROUTINE exit_surface_arrays
