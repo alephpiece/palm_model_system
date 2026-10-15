@@ -5392,6 +5392,7 @@
 
 #if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
 ! Optional GPU statistics reduction; temporary storage has this call's lifetime.
+! Compute ws_slot at each statistics update: DTK 26.04 multi-rank workaround.
     INTEGER(iwp), PARAMETER :: ws_stat_shards = 32
     INTEGER(iwp) :: ws_slot
     LOGICAL :: ws_use_shards
@@ -5496,9 +5497,6 @@
     DO  i = nxlu, nxr
 
        DO  j = nys, nyn
-#if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
-          ws_slot = MOD((i-nxlu)*(nyn-nys+1)+j-nys,ws_stat_shards)+1
-#endif
 !
 !--       Used local modified copy of nzb_max (used to degrade order of discretization) at
 !--       non-cyclic boundaries. Modify only at relevant points instead of the entire subdomain.
@@ -5967,6 +5965,7 @@
                                    ) *   weight_substep(intermediate_timestep_count)
 #if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
              IF ( ws_use_shards ) THEN
+                ws_slot = MOD((i-nxlu)*(nyn-nys+1)+j-nys,ws_stat_shards)+1
              !$ACC ATOMIC UPDATE
                 ws_partial(k,ws_slot,1) = ws_partial(k,ws_slot,1) + ws_contribution
              ELSE
@@ -5991,6 +5990,7 @@
                                     ) *   weight_substep(intermediate_timestep_count)
 #if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
              IF ( ws_use_shards ) THEN
+                ws_slot = MOD((i-nxlu)*(nyn-nys+1)+j-nys,ws_stat_shards)+1
              !$ACC ATOMIC UPDATE
                 ws_partial(k,ws_slot,2) = ws_partial(k,ws_slot,2) + ws_contribution
              ELSE
@@ -6055,6 +6055,7 @@
                                    ) *   weight_substep(intermediate_timestep_count)
 #if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
              IF ( ws_use_shards ) THEN
+                ws_slot = MOD((i-nxlu)*(nyn-nys+1)+j-nys,ws_stat_shards)+1
              !$ACC ATOMIC UPDATE
                 ws_partial(k,ws_slot,1) = ws_partial(k,ws_slot,1) + ws_contribution
              ELSE
@@ -6079,6 +6080,7 @@
                                     ) *   weight_substep(intermediate_timestep_count)
 #if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
              IF ( ws_use_shards ) THEN
+                ws_slot = MOD((i-nxlu)*(nyn-nys+1)+j-nys,ws_stat_shards)+1
              !$ACC ATOMIC UPDATE
                 ws_partial(k,ws_slot,2) = ws_partial(k,ws_slot,2) + ws_contribution
              ELSE
@@ -6123,6 +6125,7 @@
 
 #if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
 ! Optional GPU statistics reduction; temporary storage has this call's lifetime.
+! Compute ws_slot at each statistics update: DTK 26.04 multi-rank workaround.
     INTEGER(iwp), PARAMETER :: ws_stat_shards = 32
     INTEGER(iwp) :: ws_slot
     LOGICAL :: ws_use_shards
@@ -6228,9 +6231,6 @@
     !$ACC PRESENT(sums_vs2_ws_l, sums_wsvs_ws_l) IF(enable_openacc)
     DO  i = nxl, nxr
        DO  j = nysv, nyn
-#if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
-          ws_slot = MOD((i-nxl)*(nyn-nysv+1)+j-nysv,ws_stat_shards)+1
-#endif
 !
 !--       Used local modified copy of nzb_max (used to degrade order of discretization) at
 !--       non-cyclic boundaries. Modify only at relevant points instead of the entire subdomain.
@@ -6701,6 +6701,7 @@
                                    ) *   weight_substep(intermediate_timestep_count)
 #if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
              IF ( ws_use_shards ) THEN
+                ws_slot = MOD((i-nxl)*(nyn-nysv+1)+j-nysv,ws_stat_shards)+1
              !$ACC ATOMIC UPDATE
                 ws_partial(k,ws_slot,1) = ws_partial(k,ws_slot,1) + ws_contribution
              ELSE
@@ -6725,6 +6726,7 @@
                                     ) *   weight_substep(intermediate_timestep_count)
 #if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
              IF ( ws_use_shards ) THEN
+                ws_slot = MOD((i-nxl)*(nyn-nysv+1)+j-nysv,ws_stat_shards)+1
              !$ACC ATOMIC UPDATE
                 ws_partial(k,ws_slot,2) = ws_partial(k,ws_slot,2) + ws_contribution
              ELSE
@@ -6794,6 +6796,7 @@
                                    ) *   weight_substep(intermediate_timestep_count)
 #if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
              IF ( ws_use_shards ) THEN
+                ws_slot = MOD((i-nxl)*(nyn-nysv+1)+j-nysv,ws_stat_shards)+1
              !$ACC ATOMIC UPDATE
                 ws_partial(k,ws_slot,1) = ws_partial(k,ws_slot,1) + ws_contribution
              ELSE
@@ -6818,6 +6821,7 @@
                                     ) *  weight_substep(intermediate_timestep_count)
 #if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
              IF ( ws_use_shards ) THEN
+                ws_slot = MOD((i-nxl)*(nyn-nysv+1)+j-nysv,ws_stat_shards)+1
              !$ACC ATOMIC UPDATE
                 ws_partial(k,ws_slot,2) = ws_partial(k,ws_slot,2) + ws_contribution
              ELSE
@@ -6864,6 +6868,7 @@
 
 #if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
 ! Optional GPU statistics reduction; temporary storage has this call's lifetime.
+! Compute ws_slot at each statistics update: DTK 26.04 multi-rank workaround.
     INTEGER(iwp), PARAMETER :: ws_stat_shards = 32
     INTEGER(iwp) :: ws_slot
     LOGICAL :: ws_use_shards
@@ -6983,9 +6988,6 @@
     !$ACC IF(enable_openacc)
     DO  i = nxl, nxr
        DO  j = nys, nyn
-#if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
-          ws_slot = MOD((i-nxl)*(nyn-nys+1)+j-nys,ws_stat_shards)+1
-#endif
 !
 !--       Used local modified copy of nzb_max (used to degrade order of discretization) at
 !--       non-cyclic boundaries. Modify only at relevant points instead of the entire subdomain.
@@ -7445,6 +7447,7 @@
                                     ) *   weight_substep(intermediate_timestep_count)
 #if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
              IF ( ws_use_shards ) THEN
+                ws_slot = MOD((i-nxl)*(nyn-nys+1)+j-nys,ws_stat_shards)+1
              !$ACC ATOMIC UPDATE
                 ws_partial(k,ws_slot,1) = ws_partial(k,ws_slot,1) + ws_contribution
              ELSE
@@ -7509,6 +7512,7 @@
                                     ) *   weight_substep(intermediate_timestep_count)
 #if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
              IF ( ws_use_shards ) THEN
+                ws_slot = MOD((i-nxl)*(nyn-nys+1)+j-nys,ws_stat_shards)+1
              !$ACC ATOMIC UPDATE
                 ws_partial(k,ws_slot,1) = ws_partial(k,ws_slot,1) + ws_contribution
              ELSE
