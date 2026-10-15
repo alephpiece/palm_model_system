@@ -51,11 +51,13 @@ OpenACC 构建运行时关闭加速的 CPU 回退尚未通过验收，不能视�
 ## 流场统计表面归约研究
 
 `research/flow-surface-statistics` 提供可选的LSM表面统计归约。
-在OpenACC构建的 `%cpp_options` 加入 `-DPALM_SURFACE_STATS_REDUCTION` 后重新编译并链接，
+在BW100 OpenACC构建的 `%cpp_options` 加入 `-DPALM_SURFACE_STATS_REDUCTION` 后重新编译并链接，
 六项表面标量与逐土层温湿度采用显式归约，在原有主机交接处并入统计数组。
 宏关闭时保持原路径，默认平台配置尚未启用此候选。
 
-研究使用BW100 / DTK26.04与H100 / NVHPC25.3单卡单进程test。
+研究完成BW100 / DTK26.04与H100 / NVHPC25.3单卡单进程test对照。
+采用准备另通过BW100双卡四rank、2×2分解的72模拟秒短程验证，
+并核对各rank贡献、MPI全局和及归一化统计。H100继续采用宏关闭的原实现。
 BW100的土层循环显式 `COPYIN(k)`，避免该组织中FIRSTPRIVATE复用首层的已观察行为。
 实现不缓存跨调用数据，不改变USM追加、MPI或归一化顺序。
 验证结果及后续采用范围由workspace的流场统计表面归约专题维护。
