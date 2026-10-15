@@ -255,6 +255,12 @@
     REAL(wp) ::  sums_ll(nzb:nzt+1,2)  !<
 
 
+#if defined( _OPENACC ) && defined( PALM_SURFACE_STATS_REDUCTION )
+    REAL(wp) :: fs93, fs94, fs95, fs96, fs97, fs98
+    REAL(wp) :: fs_t, fs_m
+    REAL(wp) :: fs_soil(nzb_soil:nzt_soil,2)
+#endif
+
     CALL cpu_log( log_point(10), 'flow_statistics', 'start' )
 
 
@@ -1513,58 +1519,144 @@
 !
 !--    Treat land-surface quantities according to new wall model structure. Count only
 !--    quantities from upward-facing surfaces for now.
-       IF ( land_surface )  THEN
+       IF ( land_surface ) THEN
+#if defined( _OPENACC ) && defined( PALM_SURFACE_STATS_REDUCTION )
+! Accumulate on the device, then merge at the existing host ownership boundary.
+          IF ( enable_openacc ) THEN
+             fs93=0.0_wp; fs94=0.0_wp; fs95=0.0_wp
+             fs96=0.0_wp; fs97=0.0_wp; fs98=0.0_wp
+             fs_soil=0.0_wp
+             IF ( surf_lsm%ns > 0 ) THEN
+                !$ACC PARALLEL LOOP GANG VECTOR PRIVATE(i,j) &
+                !$ACC REDUCTION(+:fs93,fs94,fs95,fs96,fs97,fs98) DEFAULT(PRESENT)
+                DO m=1,surf_lsm%ns
+                   IF ( surf_lsm%upward(m) ) THEN
+                      i=surf_lsm%i(m)
+                      j=surf_lsm%j(m)
+                      fs93=fs93+surf_lsm%ghf(m)*rmask(j,i,sr)
+                      fs94=fs94+surf_lsm%qsws_liq(m)*rmask(j,i,sr)
+                      fs95=fs95+surf_lsm%qsws_soil(m)*rmask(j,i,sr)
+                      fs96=fs96+surf_lsm%qsws_veg(m)*rmask(j,i,sr)
+                      fs97=fs97+surf_lsm%r_a(m)*rmask(j,i,sr)
+                      fs98=fs98+surf_lsm%r_s(m)*rmask(j,i,sr)
+                   ENDIF
+                ENDDO
+                !$ACC END PARALLEL LOOP
+                DO k=nzb_soil,nzt_soil
+                   fs_t=0.0_wp
+                   fs_m=0.0_wp
+                   !$ACC PARALLEL LOOP GANG VECTOR PRIVATE(i,j) &
+! Explicitly transfer the changing layer index: DTK 26.04 FIRSTPRIVATE reused the first layer.
+                   !$ACC COPYIN(k) REDUCTION(+:fs_t,fs_m) DEFAULT(PRESENT)
+                   DO m=1,surf_lsm%ns
+                      IF ( surf_lsm%upward(m) ) THEN
+                         i=surf_lsm%i(m)
+                         j=surf_lsm%j(m)
+                         fs_t=fs_t+t_soil%var_2d(k,m)*rmask(j,i,sr)
+                         fs_m=fs_m+m_soil%var_2d(k,m)*rmask(j,i,sr)
+                      ENDIF
+                   ENDDO
+                   !$ACC END PARALLEL LOOP
+                   fs_soil(k,1)=fs_t
+                   fs_soil(k,2)=fs_m
+                ENDDO
+             ENDIF
+          ELSE
+#endif
           tn = 0
           !$OMP PARALLEL PRIVATE( i, j, m, tn )
           !$ tn = omp_get_thread_num()
           !$OMP DO
+#if ! defined( _OPENACC ) || ! defined( PALM_SURFACE_STATS_REDUCTION )
           !$ACC PARALLEL LOOP GANG VECTOR PRIVATE(i, j, m) FIRSTPRIVATE(tn) &
           !$ACC DEFAULT(PRESENT) IF(enable_openacc)
+#endif
           DO  m = 1, surf_lsm%ns
              IF ( surf_lsm%upward(m) )  THEN
                 i = surf_lsm%i(m)
                 j = surf_lsm%j(m)
 
+#if ! defined( _OPENACC ) || ! defined( PALM_SURFACE_STATS_REDUCTION )
                 !$ACC ATOMIC UPDATE
+#endif
                 sums_l(nzb,93,tn)  = sums_l(nzb,93,tn) + surf_lsm%ghf(m)       * rmask(j,i,sr)
+#if ! defined( _OPENACC ) || ! defined( PALM_SURFACE_STATS_REDUCTION )
                 !$ACC ATOMIC UPDATE
+#endif
                 sums_l(nzb,94,tn)  = sums_l(nzb,94,tn) + surf_lsm%qsws_liq(m)  * rmask(j,i,sr)
+#if ! defined( _OPENACC ) || ! defined( PALM_SURFACE_STATS_REDUCTION )
                 !$ACC ATOMIC UPDATE
+#endif
                 sums_l(nzb,95,tn)  = sums_l(nzb,95,tn) + surf_lsm%qsws_soil(m) * rmask(j,i,sr)
+#if ! defined( _OPENACC ) || ! defined( PALM_SURFACE_STATS_REDUCTION )
                 !$ACC ATOMIC UPDATE
+#endif
                 sums_l(nzb,96,tn)  = sums_l(nzb,96,tn) + surf_lsm%qsws_veg(m)  * rmask(j,i,sr)
+#if ! defined( _OPENACC ) || ! defined( PALM_SURFACE_STATS_REDUCTION )
                 !$ACC ATOMIC UPDATE
+#endif
                 sums_l(nzb,97,tn)  = sums_l(nzb,97,tn) + surf_lsm%r_a(m)       * rmask(j,i,sr)
+#if ! defined( _OPENACC ) || ! defined( PALM_SURFACE_STATS_REDUCTION )
                 !$ACC ATOMIC UPDATE
+#endif
                 sums_l(nzb,98,tn)  = sums_l(nzb,98,tn) + surf_lsm%r_s(m)       * rmask(j,i,sr)
              ENDIF
           ENDDO
+#if ! defined( _OPENACC ) || ! defined( PALM_SURFACE_STATS_REDUCTION )
           !$ACC END PARALLEL LOOP
+#endif
           !$OMP END PARALLEL
 
           tn = 0
           !$OMP PARALLEL PRIVATE( i, j, k, m, tn )
           !$ tn = omp_get_thread_num()
           !$OMP DO
+#if ! defined( _OPENACC ) || ! defined( PALM_SURFACE_STATS_REDUCTION )
           !$ACC PARALLEL LOOP GANG VECTOR PRIVATE(i, j, k, m) FIRSTPRIVATE(tn) &
           !$ACC DEFAULT(PRESENT) IF(enable_openacc)
+#endif
           DO  m = 1, surf_lsm%ns
              IF ( surf_lsm%upward(m) )  THEN
                 i = surf_lsm%i(m)
                 j = surf_lsm%j(m)
                 DO  k = nzb_soil, nzt_soil
+#if ! defined( _OPENACC ) || ! defined( PALM_SURFACE_STATS_REDUCTION )
                    !$ACC ATOMIC UPDATE
+#endif
                    sums_l(k,89,tn)  = sums_l(k,89,tn) + t_soil%var_2d(k,m) * rmask(j,i,sr)
+#if ! defined( _OPENACC ) || ! defined( PALM_SURFACE_STATS_REDUCTION )
                    !$ACC ATOMIC UPDATE
+#endif
                    sums_l(k,91,tn)  = sums_l(k,91,tn) + m_soil%var_2d(k,m) * rmask(j,i,sr)
                 ENDDO
              ENDIF
           ENDDO
+#if ! defined( _OPENACC ) || ! defined( PALM_SURFACE_STATS_REDUCTION )
           !$ACC END PARALLEL LOOP
+#endif
           !$OMP END PARALLEL
+#if defined( _OPENACC ) && defined( PALM_SURFACE_STATS_REDUCTION )
+          ENDIF
+#endif
        ENDIF
 !
        !$ACC UPDATE HOST(sums_l) IF(enable_openacc)
+#if defined( _OPENACC ) && defined( PALM_SURFACE_STATS_REDUCTION )
+! No device consumer of sums_l follows this transfer within the current region.
+! Keep existing values and merge before USM additions and the MPI reduction.
+       IF ( land_surface .AND. enable_openacc ) THEN
+          IF ( surf_lsm%ns > 0 ) THEN
+             sums_l(nzb,93,0)=sums_l(nzb,93,0)+fs93
+             sums_l(nzb,94,0)=sums_l(nzb,94,0)+fs94
+             sums_l(nzb,95,0)=sums_l(nzb,95,0)+fs95
+             sums_l(nzb,96,0)=sums_l(nzb,96,0)+fs96
+             sums_l(nzb,97,0)=sums_l(nzb,97,0)+fs97
+             sums_l(nzb,98,0)=sums_l(nzb,98,0)+fs98
+             sums_l(nzb_soil:nzt_soil,89,0)=sums_l(nzb_soil:nzt_soil,89,0)+fs_soil(:,1)
+             sums_l(nzb_soil:nzt_soil,91,0)=sums_l(nzb_soil:nzt_soil,91,0)+fs_soil(:,2)
+          ENDIF
+       ENDIF
+#endif
 !
 !--    Treat urban-surface quantities according to new wall model structure. Here, ghf and r_a are
 !--    added on top of LSM sums.
