@@ -34,3 +34,16 @@ H100 构建不启用，未使用 OpenACC 的构建也保持原实现。
 该实现将原先对每个高度的原子累加分散到 32 个槽，再按高度归并到原统计数组，
 保留 RK 子步累积。工作区为调用局部自动数组，以结构化 DATA 区管理设备映射，
 占用 `(nzt-nzb) × 32 × sizeof(wp)` 字节，不跨调用缓存。
+
+## WS 动量统计归约
+
+`platform/dtk26.04` 已采用 u/v/w 统计分片及 w 下部统计的 atomic 修复。
+Workspace 的 `tools/palm/build.py` 默认在 DTK OpenACC 构建中启用分片。
+其它构建入口需在 BW100 OpenACC 的 `%cpp_options` 中加入 `-DPALM_WS_MOMENTUM_SHARDS`，
+重新编译并链接程序。H100 和纯 CPU 构建不启用此宏，宏关闭时保留 atomic 修复。
+
+每次调用向 32 个槽累加后归并到已有统计，保留 RK 累积。
+u/v 工作区各为 `(nzt-nzb) × 32 × 2 × sizeof(wp)` 字节，w 为其一半，不跨调用缓存。
+槽编号在统计更新前计算，保留 DTK 26.04 四 rank 故障的已验证绕过组织。
+采用验证覆盖 BW100 GPU 的完整 test、干燥短程和双卡四 rank 短程。
+OpenACC 构建运行时关闭加速的 CPU 回退尚未通过验收，不能视为已验证的纯 CPU 构建路径。
