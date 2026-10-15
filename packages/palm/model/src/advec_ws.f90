@@ -6937,6 +6937,8 @@
     ws_use_shards = enable_openacc
 ! The lower-order branch can extend to nzt when topography reaches the top.
 ! Boundary columns instead stop at nzt-1; preserve untouched top statistics.
+! Each enabled boundary replaces nzb_max_l within its first/last three columns
+! (the i/j +/- 2 tests below). Only a nonempty interior rectangle can reach nzt.
     ws_k_end = nzt - 1
     IF ( nxr-nxl+1 > MERGE(3,0,bc_dirichlet_l .OR. bc_radiation_l) + &
                       MERGE(3,0,bc_dirichlet_r .OR. bc_radiation_r) .AND. &
