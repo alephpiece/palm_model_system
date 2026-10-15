@@ -48,12 +48,13 @@ u/v 工作区各为 `(nzt-nzb) × 32 × 2 × sizeof(wp)` 字节，w 为其一半
 采用验证覆盖 BW100 GPU 的完整 test、干燥短程和双卡四 rank 短程。
 OpenACC 构建运行时关闭加速的 CPU 回退尚未通过验收，不能视为已验证的纯 CPU 构建路径。
 
-## 流场统计表面归约研究
+## 流场统计表面归约
 
-`research/flow-surface-statistics` 提供可选的LSM表面统计归约。
+`platform/dtk26.04` 已采用LSM表面统计归约，研究分支 `research/flow-surface-statistics` 保留。
+Workspace 的 `tools/palm/build.py` 默认在DTK OpenACC构建中启用。其它构建入口
 在BW100 OpenACC构建的 `%cpp_options` 加入 `-DPALM_SURFACE_STATS_REDUCTION` 后重新编译并链接，
 六项表面标量与逐土层温湿度采用显式归约，在原有主机交接处并入统计数组。
-宏关闭时保持原路径，默认平台配置尚未启用此候选。
+宏关闭时保持原路径，H100与纯CPU构建不启用此宏。
 
 研究完成BW100 / DTK26.04与H100 / NVHPC25.3单卡单进程test对照。
 采用准备另通过BW100双卡四rank、2×2分解的72模拟秒短程验证，
