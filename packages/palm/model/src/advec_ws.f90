@@ -3804,22 +3804,14 @@
 #endif
 
     !$ACC PARALLEL LOOP GANG COLLAPSE(2) VECTOR_LENGTH(64) FIRSTPRIVATE(tn, sk_num) &
-    !$ACC PRIVATE(i, j, k, k_mm, k_pp, k_ppp) &
-    !$ACC PRIVATE(ibit0, ibit1, ibit2, ibit3, ibit4, ibit5) &
-    !$ACC PRIVATE(ibit0_l, ibit1_l, ibit2_l) &
-    !$ACC PRIVATE(ibit3_s, ibit4_s, ibit5_s) &
-    !$ACC PRIVATE(ibit6, ibit7, ibit8) &
-    !$ACC PRIVATE(nzb_max_l) &
-    !$ACC PRIVATE(diss_l, diss_r, flux_l, flux_r) &
-    !$ACC PRIVATE(diss_n, diss_s, flux_s, flux_n) &
-    !$ACC PRIVATE(flux_t, diss_t, flux_d, diss_d) &
-    !$ACC PRIVATE(div, u_comp, u_comp_l, v_comp, v_comp_s) &
+    !$ACC PRIVATE(i, j, k, nzb_max_l, ibit6) &
+    !$ACC PRIVATE(flux_t, diss_t) &
     !$ACC PRESENT(advc_flag) &
     !$ACC PRESENT(sk, u, v, w, u_stokes_zu, v_stokes_zu) &
     !$ACC PRESENT(drho_air, rho_air_zw, ddzw) &
     !$ACC PRESENT(tend) &
 #if defined( _OPENACC ) && defined( __palm_ws_sharded_stats )
-    !$ACC FIRSTPRIVATE(ws_use_shards) PRIVATE(ws_contribution,ws_slot) NO_CREATE(ws_partial) &
+    !$ACC FIRSTPRIVATE(ws_use_shards) NO_CREATE(ws_partial) &
 #endif
     !$ACC PRESENT(hom(:,1,1:3,0)) &
     !$ACC PRESENT(weight_substep(intermediate_timestep_count)) &
@@ -5506,23 +5498,14 @@
 #endif
 
     !$ACC PARALLEL LOOP GANG COLLAPSE(2) VECTOR_LENGTH(64) FIRSTPRIVATE(tn, gu, gv) &
-    !$ACC PRIVATE(i, j, k, k_mm, k_pp, k_ppp) &
-    !$ACC PRIVATE(ibit0, ibit1, ibit2, ibit3, ibit4, ibit5) &
-    !$ACC PRIVATE(ibit0_l, ibit1_l, ibit2_l) &
-    !$ACC PRIVATE(ibit3_s, ibit4_s, ibit5_s) &
-    !$ACC PRIVATE(nzb_max_l) &
-    !$ACC PRIVATE(ibit6, ibit7, ibit8) &
-    !$ACC PRIVATE(flux_r, diss_r) &
-    !$ACC PRIVATE(flux_n, diss_n) &
-    !$ACC PRIVATE(flux_t, diss_t, flux_d, diss_d) &
-    !$ACC PRIVATE(flux_l, diss_l, flux_s, diss_s) &
-    !$ACC PRIVATE(div, u_comp, u_comp_l, v_comp, v_comp_s, w_comp) &
+    !$ACC PRIVATE(i, j, k, nzb_max_l, ibit6) &
+    !$ACC PRIVATE(flux_t, diss_t, w_comp) &
     !$ACC PRESENT(advc_flags_m) &
     !$ACC PRESENT(u, v, w) &
     !$ACC PRESENT(drho_air, rho_air_zw, ddzw) &
     !$ACC PRESENT(tend) &
 #if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
-    !$ACC FIRSTPRIVATE(ws_use_shards) PRIVATE(ws_contribution,ws_slot) NO_CREATE(ws_partial) &
+    !$ACC FIRSTPRIVATE(ws_use_shards) NO_CREATE(ws_partial) &
 #endif
     !$ACC PRESENT(hom(:,1,1:3,0)) &
     !$ACC PRESENT(weight_substep(intermediate_timestep_count)) &
@@ -6261,23 +6244,14 @@
 #endif
 
     !$ACC PARALLEL LOOP GANG COLLAPSE(2) VECTOR_LENGTH(64) FIRSTPRIVATE(tn, gu, gv) &
-    !$ACC PRIVATE(i, j, k, k_mm, k_pp, k_ppp) &
-    !$ACC PRIVATE(ibit9, ibit10, ibit11, ibit12, ibit13, ibit14) &
-    !$ACC PRIVATE(ibit15, ibit16, ibit17) &
-    !$ACC PRIVATE(ibit9_l, ibit10_l, ibit11_l) &
-    !$ACC PRIVATE(ibit12_s, ibit13_s, ibit14_s) &
-    !$ACC PRIVATE(nzb_max_l) &
-    !$ACC PRIVATE(flux_r, diss_r) &
-    !$ACC PRIVATE(flux_n, diss_n) &
-    !$ACC PRIVATE(flux_t, diss_t, flux_d, diss_d) &
-    !$ACC PRIVATE(flux_l, diss_l, flux_s, diss_s) &
-    !$ACC PRIVATE(div, u_comp, u_comp_l, v_comp, v_comp_s, w_comp) &
+    !$ACC PRIVATE(i, j, k, nzb_max_l, ibit15) &
+    !$ACC PRIVATE(flux_t, diss_t, w_comp) &
     !$ACC PRESENT(advc_flags_m) &
     !$ACC PRESENT(u, v, w) &
     !$ACC PRESENT(drho_air, rho_air_zw, ddzw) &
     !$ACC PRESENT(tend) &
 #if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
-    !$ACC FIRSTPRIVATE(ws_use_shards) PRIVATE(ws_contribution,ws_slot) NO_CREATE(ws_partial) &
+    !$ACC FIRSTPRIVATE(ws_use_shards) NO_CREATE(ws_partial) &
 #endif
     !$ACC PRESENT(hom(:,1,1:3,0)) &
     !$ACC PRESENT(weight_substep(intermediate_timestep_count)) &
@@ -7038,23 +7012,14 @@
 #endif
 
     !$ACC PARALLEL LOOP GANG COLLAPSE(2) VECTOR_LENGTH(64) FIRSTPRIVATE(tn, gu, gv) &
-    !$ACC PRIVATE(i, j, k, k_mm, k_pp, k_ppp) &
-    !$ACC PRIVATE(ibit18, ibit19, ibit20, ibit21, ibit22, ibit23) &
-    !$ACC PRIVATE(ibit24, ibit25, ibit26) &
-    !$ACC PRIVATE(ibit18_l, ibit19_l, ibit20_l) &
-    !$ACC PRIVATE(ibit21_s, ibit22_s, ibit23_s) &
-    !$ACC PRIVATE(nzb_max_l) &
-    !$ACC PRIVATE(flux_r, diss_r) &
-    !$ACC PRIVATE(flux_n, diss_n) &
-    !$ACC PRIVATE(flux_t, diss_t, flux_d, diss_d) &
-    !$ACC PRIVATE(flux_l, diss_l, flux_s, diss_s) &
-    !$ACC PRIVATE(div, u_comp, u_comp_l, v_comp, v_comp_s, w_comp) &
+    !$ACC PRIVATE(i, j, k, nzb_max_l) &
+    !$ACC PRIVATE(flux_t, diss_t, w_comp) &
     !$ACC PRESENT(advc_flags_m) &
     !$ACC PRESENT(u, v, w) &
     !$ACC PRESENT(drho_air, rho_air_zw, ddzw) &
     !$ACC PRESENT(tend) &
 #if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
-    !$ACC FIRSTPRIVATE(ws_use_shards) PRIVATE(ws_contribution,ws_slot) NO_CREATE(ws_partial) &
+    !$ACC FIRSTPRIVATE(ws_use_shards) NO_CREATE(ws_partial) &
 #endif
     !$ACC PRESENT(hom(:,1,1:3,0)) &
     !$ACC PRESENT(weight_substep(intermediate_timestep_count)) &
