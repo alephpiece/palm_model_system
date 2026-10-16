@@ -112,7 +112,7 @@
 
        REAL(wp), DIMENSION(nzb:nzt+1,nysg:nyng,nxlg:nxrg) ::  s  !< treated scalar
 
-       !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i, j) &
+       !$ACC PARALLEL LOOP COLLAPSE(2) VECTOR_LENGTH(64) PRIVATE(i, j) &
        !$ACC PRIVATE(surf_e, surf_s, flag, flux_tmp) &
        !$ACC PRIVATE(flux_r(nzb+1:nzt), flux_l(nzb+1:nzt), flux_n(nzb+1:nzt), flux_s(nzb+1:nzt), flux_t(nzb+1:nzt), flux_d(nzb+1:nzt)) &
        !$ACC PRESENT(topo_flags, kh) &

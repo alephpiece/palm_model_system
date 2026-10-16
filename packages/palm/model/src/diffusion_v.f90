@@ -113,7 +113,7 @@
        REAL(wp), DIMENSION(nzb+1:nzt) ::  flux_s   !< flux at j-1/2 (from v-grid point)
 
 
-       !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i, j) &
+       !$ACC PARALLEL LOOP COLLAPSE(2) VECTOR_LENGTH(64) PRIVATE(i, j) &
        !$ACC PRIVATE(surf_e, surf_s, flag, kmxm, kmxp, kmzm, kmzp) &
        !$ACC PRIVATE(flux_r(nzb+1:nzt), flux_l(nzb+1:nzt), flux_n(nzb+1:nzt), flux_s(nzb+1:nzt), flux_t(nzb+1:nzt), flux_d(nzb+1:nzt)) &
        !$ACC PRIVATE(mask_east, mask_west) &
