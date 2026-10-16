@@ -901,11 +901,6 @@
        !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(fm_value,fm_c) DEFAULT(PRESENT) IF(enable_openacc)
        DO fm_b = 1, 9
           DO fm_a = nzb, nzt+1
-             IF ( fm_b == 9 ) THEN
-                IF ( fm_a /= nzb .AND. fm_a /= nzb+1 .AND. fm_a /= nzb+2 .AND. &
-                     fm_a /= nzb+3 .AND. fm_a /= nzb+4 .AND. fm_a /= nzb+12 .AND. &
-                     fm_a /= nzb+14 ) CYCLE
-             ENDIF
              fm_value = 0.0_wp
              !$ACC LOOP SEQ
              DO fm_c = 1, fm_nparts
@@ -919,7 +914,11 @@
              IF (fm_b == 6) sums_l(fm_a,33,tn) = sums_l(fm_a,33,tn) + fm_value
              IF (fm_b == 7) sums_l(fm_a,38,tn) = sums_l(fm_a,38,tn) + fm_value
              IF (fm_b == 8) sums_l(fm_a,121,tn) = sums_l(fm_a,121,tn) + fm_value
-             IF (fm_b == 9) sums_l(fm_a,pr_palm,tn) = sums_l(fm_a,pr_palm,tn) + fm_value
+             IF ( fm_a == nzb .OR. fm_a == nzb+1 .OR. fm_a == nzb+2 .OR. &
+                  fm_a == nzb+3 .OR. fm_a == nzb+4 .OR. fm_a == nzb+12 .OR. &
+                  fm_a == nzb+14 ) THEN
+                IF (fm_b == 9) sums_l(fm_a,pr_palm,tn) = sums_l(fm_a,pr_palm,tn) + fm_value
+             ENDIF
           ENDDO
        ENDDO
 #endif
