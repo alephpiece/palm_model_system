@@ -1759,7 +1759,10 @@
 !-- Calculate net radiation radiation without longwave outgoing flux because it has a dependency
 !-- on surface temperature and thus enters the prognostic equations directly.
     !$ACC KERNELS DEFAULT(PRESENT)  IF(enable_openacc)
-    surf_lsm%rad_net_l = surf_lsm%rad_sw_in - surf_lsm%rad_sw_out + surf_lsm%rad_lw_in
+!   Express independent surface elements explicitly for accelerator lowering.
+    DO  m = 1, surf_lsm%ns
+       surf_lsm%rad_net_l(m) = surf_lsm%rad_sw_in(m) - surf_lsm%rad_sw_out(m) + surf_lsm%rad_lw_in(m)
+    ENDDO
     !$ACC END KERNELS
 
     !$OMP PARALLEL DO PRIVATE (m, i, j, k, lambda_h_sat, ke, lambda_soil, lambda_surface,          &
