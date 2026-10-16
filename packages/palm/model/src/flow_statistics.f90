@@ -4,6 +4,10 @@
 #if defined( _OPENACC ) && defined( PALM_FLOW_MIXED_SHARDS ) && ! defined( _OPENMP )
 #define PALM_FLOW_MIXED_SHARDS_ACTIVE
 #endif
+
+#if defined( _OPENACC ) && defined( PALM_FLOW_HUMIDITY_SHARDS ) && ! defined( _OPENMP )
+#define PALM_FLOW_HUMIDITY_SHARDS_ACTIVE
+#endif
 !> @file flow_statistics.f90
 !--------------------------------------------------------------------------------------------------!
 ! This file is part of the PALM model system.
@@ -291,6 +295,16 @@
 #define FS_MIXED(k,slot,compact) sums_l(k,slot,tn)
 #endif
 
+#if defined( PALM_FLOW_HUMIDITY_SHARDS_ACTIVE )
+    INTEGER, PARAMETER :: fh_nparts = 32
+    INTEGER :: fh_part, fh_a, fh_b, fh_c
+    REAL(wp) :: fh_value
+    REAL(wp), ALLOCATABLE :: fs_humidity(:,:,:)
+#define FS_HUMIDITY(k,slot,compact) fs_humidity(k,compact,fh_part)
+#else
+#define FS_HUMIDITY(k,slot,compact) sums_l(k,slot,tn)
+#endif
+
     CALL cpu_log( log_point(10), 'flow_statistics', 'start' )
 
 
@@ -313,6 +327,11 @@
 #if defined( PALM_FLOW_MIXED_SHARDS_ACTIVE )
     ALLOCATE( fs_mixed(nzb:nzt+1,9,fm_nparts) )
     !$ACC ENTER DATA CREATE(fs_mixed) IF(enable_openacc)
+#endif
+
+#if defined( PALM_FLOW_HUMIDITY_SHARDS_ACTIVE )
+    ALLOCATE( fs_humidity(nzb:nzt+1,2,fh_nparts) )
+    !$ACC ENTER DATA CREATE(fs_humidity) IF(enable_openacc)
 #endif
     DO  sr = 0, statistic_regions
 !
@@ -439,19 +458,54 @@
 !--    Horizontally averaged profiles of virtual potential temperature, total water content, water
 !--    vapor mixing ratio and liquid water potential temperature
        IF ( humidity )  THEN
-          !$OMP DO
-          !$ACC PARALLEL LOOP GANG DEFAULT(PRESENT) IF(enable_openacc)
-          DO  i = nxl, nxr
-             DO  j =  nys, nyn
-                DO  k = nzb, nzt+1
-                   flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 22 ) )
-                   !$ACC ATOMIC UPDATE
-                   sums_l(k,44,tn)  = sums_l(k,44,tn) + vpt(k,j,i) * rmask(j,i,sr) * flag
-                   !$ACC ATOMIC UPDATE
-                   sums_l(k,41,tn)  = sums_l(k,41,tn) + q(k,j,i) * rmask(j,i,sr)   * flag
+#if defined( PALM_FLOW_HUMIDITY_SHARDS_ACTIVE )
+!  Clear each region, then distribute columns across gangs and levels across vector lanes.
+          !$ACC PARALLEL LOOP COLLAPSE(3) DEFAULT(PRESENT) IF(enable_openacc)
+          DO fh_c = 1, fh_nparts
+             DO fh_b = 1, 2
+                DO fh_a = nzb, nzt+1
+                   fs_humidity(fh_a,fh_b,fh_c) = 0.0_wp
                 ENDDO
              ENDDO
           ENDDO
+#endif
+          !$OMP DO
+#if defined( PALM_FLOW_HUMIDITY_SHARDS_ACTIVE )
+          !$ACC PARALLEL LOOP GANG COLLAPSE(2) PRIVATE(fh_part) DEFAULT(PRESENT) IF(enable_openacc)
+#else
+          !$ACC PARALLEL LOOP GANG DEFAULT(PRESENT) IF(enable_openacc)
+#endif
+          DO  i = nxl, nxr
+             DO  j =  nys, nyn
+#if defined( PALM_FLOW_HUMIDITY_SHARDS_ACTIVE )
+                fh_part = MOD( (i-nxl)*(nyn-nys+1)+j-nys, fh_nparts ) + 1
+                !$ACC LOOP VECTOR PRIVATE(flag)
+#endif
+                DO  k = nzb, nzt+1
+                   flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 22 ) )
+                   !$ACC ATOMIC UPDATE
+                   FS_HUMIDITY(k,44,1) = FS_HUMIDITY(k,44,1) + vpt(k,j,i) * rmask(j,i,sr) * flag
+                   !$ACC ATOMIC UPDATE
+                   FS_HUMIDITY(k,41,2) = FS_HUMIDITY(k,41,2) + q(k,j,i) * rmask(j,i,sr)   * flag
+                ENDDO
+             ENDDO
+          ENDDO
+
+#if defined( PALM_FLOW_HUMIDITY_SHARDS_ACTIVE )
+!  Preserve old values and finish before the existing host/MPI mean calculation.
+          !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(fh_value,fh_c) DEFAULT(PRESENT) IF(enable_openacc)
+          DO fh_b = 1, 2
+             DO fh_a = nzb, nzt+1
+                fh_value = 0.0_wp
+                !$ACC LOOP SEQ
+                DO fh_c = 1, fh_nparts
+                   fh_value = fh_value + fs_humidity(fh_a,fh_b,fh_c)
+                ENDDO
+                IF (fh_b == 1) sums_l(fh_a,44,tn) = sums_l(fh_a,44,tn) + fh_value
+                IF (fh_b == 2) sums_l(fh_a,41,tn) = sums_l(fh_a,41,tn) + fh_value
+             ENDDO
+          ENDDO
+#endif
 
           IF ( bulk_cloud_model )  THEN
              !$OMP DO
@@ -2541,6 +2595,13 @@
 #endif
 #undef FS_MIXED
 #undef PALM_FLOW_MIXED_SHARDS_ACTIVE
+
+#if defined( PALM_FLOW_HUMIDITY_SHARDS_ACTIVE )
+    !$ACC EXIT DATA DELETE(fs_humidity) IF(enable_openacc)
+    DEALLOCATE( fs_humidity )
+#endif
+#undef FS_HUMIDITY
+#undef PALM_FLOW_HUMIDITY_SHARDS_ACTIVE
 
 #if defined( PALM_FLOW_FLUX_SHARDS_ACTIVE )
     !$ACC EXIT DATA DELETE(fs_flux) IF(enable_openacc)
