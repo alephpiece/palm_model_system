@@ -1,6 +1,9 @@
 #if defined( _OPENACC ) && defined( PALM_FLOW_FLUX_SHARDS ) && ! defined( _OPENMP )
 #define PALM_FLOW_FLUX_SHARDS_ACTIVE
 #endif
+#if defined( _OPENACC ) && defined( PALM_FLOW_MIXED_SHARDS ) && ! defined( _OPENMP )
+#define PALM_FLOW_MIXED_SHARDS_ACTIVE
+#endif
 !> @file flow_statistics.f90
 !--------------------------------------------------------------------------------------------------!
 ! This file is part of the PALM model system.
@@ -277,6 +280,17 @@
 #define FS_FLUX(k,slot,compact) sums_l(k,slot,tn)
 #endif
 
+#if defined( PALM_FLOW_MIXED_SHARDS_ACTIVE )
+    INTEGER, PARAMETER :: fm_nparts = 32
+    INTEGER :: fm_part, fm_a, fm_b, fm_c
+    REAL(wp) :: fm_value
+    REAL(wp), ALLOCATABLE :: fs_mixed(:,:,:)
+!  Eight profile targets and one column for sparse pr_palm targets.
+#define FS_MIXED(k,slot,compact) fs_mixed(k,compact,fm_part)
+#else
+#define FS_MIXED(k,slot,compact) sums_l(k,slot,tn)
+#endif
+
     CALL cpu_log( log_point(10), 'flow_statistics', 'start' )
 
 
@@ -295,6 +309,10 @@
 #if defined( PALM_FLOW_FLUX_SHARDS_ACTIVE )
     ALLOCATE( fs_flux(nzb:nzt+1,13,fs_nparts) )
     !$ACC ENTER DATA CREATE(fs_flux) IF(enable_openacc)
+#endif
+#if defined( PALM_FLOW_MIXED_SHARDS_ACTIVE )
+    ALLOCATE( fs_mixed(nzb:nzt+1,9,fm_nparts) )
+    !$ACC ENTER DATA CREATE(fs_mixed) IF(enable_openacc)
 #endif
     DO  sr = 0, statistic_regions
 !
@@ -610,38 +628,56 @@
 !--          walls and inside buildings.
 !--    ATTENTION: explicit PRESENT clauses are required for the surf_... arrays, although they
 !--               are on the device. Maybe a bug of nvfortran compiler.
+#if defined( PALM_FLOW_MIXED_SHARDS_ACTIVE )
+!  Clear once per statistics region; preserve the original per-column energy accumulation.
+       !$ACC PARALLEL LOOP COLLAPSE(3) DEFAULT(PRESENT) IF(enable_openacc)
+       DO fm_c = 1, fm_nparts
+          DO fm_b = 1, 9
+             DO fm_a = nzb, nzt+1
+                fs_mixed(fm_a,fm_b,fm_c) = 0.0_wp
+             ENDDO
+          ENDDO
+       ENDDO
+#endif
        tn = 0
        !$OMP PARALLEL PRIVATE( i, j, k, pts, sums_ll,                          &
        !$OMP                   sums_l_epert, sums_l_etot, tn, ust, ust2, u2, vst, vst2, v2,  &
        !$OMP                   w2, flag, m )
        !$ tn = omp_get_thread_num()
        !$OMP DO
+#if defined( PALM_FLOW_MIXED_SHARDS_ACTIVE )
+       !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(fm_part) &
+#else
        !$ACC PARALLEL LOOP COLLAPSE(2) &
+#endif
        !$ACC PRIVATE(dissipation, du_dx, du_dy, du_dz, dv_dx, dv_dy, dv_dz, dw_dx, dw_dy, dw_dz ) &
        !$ACC PRIVATE(eta, flag, i, j, k, m, sums_l_etot, s11, s21, s31, s12, s22, s32, s13, s23, s33) &
        !$ACC PRESENT(surf_def, surf_lsm, surf_top, surf_usm) &
        !$ACC DEFAULT(PRESENT) IF(enable_openacc)
        DO  i = nxl, nxr
           DO  j =  nys, nyn
+#if defined( PALM_FLOW_MIXED_SHARDS_ACTIVE )
+             fm_part = MOD( (i-nxl)*(nyn-nys+1)+j-nys, fm_nparts ) + 1
+#endif
              sums_l_etot = 0.0_wp
              DO  k = nzb, nzt+1
                 flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 22 ) )
 !
 !--             Prognostic and diagnostic variables
                 !$ACC ATOMIC UPDATE
-                sums_l(k,3,tn)  = sums_l(k,3,tn)  + w(k,j,i)  * rmask(j,i,sr) * flag
+                FS_MIXED(k,3,1)  = FS_MIXED(k,3,1)  + w(k,j,i)  * rmask(j,i,sr) * flag
                 !$ACC ATOMIC UPDATE
-                sums_l(k,8,tn)  = sums_l(k,8,tn)  + e(k,j,i)  * rmask(j,i,sr) * flag
+                FS_MIXED(k,8,2)  = FS_MIXED(k,8,2)  + e(k,j,i)  * rmask(j,i,sr) * flag
                 !$ACC ATOMIC UPDATE
-                sums_l(k,9,tn)  = sums_l(k,9,tn)  + km(k,j,i) * rmask(j,i,sr) * flag
+                FS_MIXED(k,9,3)  = FS_MIXED(k,9,3)  + km(k,j,i) * rmask(j,i,sr) * flag
                 !$ACC ATOMIC UPDATE
-                sums_l(k,10,tn) = sums_l(k,10,tn) + kh(k,j,i) * rmask(j,i,sr) * flag
+                FS_MIXED(k,10,4) = FS_MIXED(k,10,4) + kh(k,j,i) * rmask(j,i,sr) * flag
                 !$ACC ATOMIC UPDATE
-                sums_l(k,40,tn) = sums_l(k,40,tn) + ( p(k,j,i)                                     &
+                FS_MIXED(k,40,5) = FS_MIXED(k,40,5) + ( p(k,j,i)                                     &
                                          / momentumflux_output_conversion(k) ) * flag
 
                 !$ACC ATOMIC UPDATE
-                sums_l(k,33,tn) = sums_l(k,33,tn) + &
+                FS_MIXED(k,33,6) = FS_MIXED(k,33,6) + &
                                   ( pt(k,j,i)-hom(k,1,4,sr) )**2 * rmask(j,i,sr) * flag
 #if ! defined( _OPENACC )
                 IF ( humidity )  THEN
@@ -657,7 +693,7 @@
 !--             Higher moments
 !--             (Computation of the skewness of w further below)
                 !$ACC ATOMIC UPDATE
-                sums_l(k,38,tn) = sums_l(k,38,tn) + w(k,j,i)**3 * rmask(j,i,sr) * flag
+                FS_MIXED(k,38,7) = FS_MIXED(k,38,7) + w(k,j,i)**3 * rmask(j,i,sr) * flag
 
                 sums_l_etot  = sums_l_etot + 0.5_wp * ( u(k,j,i)**2 + v(k,j,i)**2 + w(k,j,i)**2 )  &
                                              * rmask(j,i,sr) * flag
@@ -737,7 +773,7 @@
                    eta         = ( km(k,j,i)**3.0_wp / ( dissipation+1.0E-12 ) )**(1.0_wp/4.0_wp)
 
                    !$ACC ATOMIC UPDATE
-                   sums_l(k,121,tn) = sums_l(k,121,tn) + eta * rmask(j,i,sr) * flag
+                   FS_MIXED(k,121,8) = FS_MIXED(k,121,8) + eta * rmask(j,i,sr) * flag
 
 
                 ENDIF !Kolmogorov length scale
@@ -749,7 +785,7 @@
 !--          of sums_l). Summation of these quantities is seperated from the previous loop in order
 !--          to allow vectorization of that loop.
              !$ACC ATOMIC UPDATE
-             sums_l(nzb+4,pr_palm,tn) = sums_l(nzb+4,pr_palm,tn) + sums_l_etot
+             FS_MIXED(nzb+4,pr_palm,9) = FS_MIXED(nzb+4,pr_palm,9) + sums_l_etot
 !
 !--          2D-arrays (being collected in the last column of sums_l)
              DO  m = surf_def%start_index(j,i), surf_def%end_index(j,i)
@@ -758,20 +794,20 @@
 
                    k = surf_def%k(m) + surf_def%koff(m)
                    !$ACC ATOMIC UPDATE
-                   sums_l(nzb,pr_palm,tn)   = sums_l(nzb,pr_palm,tn) + surf_def%us(m) *            &
+                   FS_MIXED(nzb,pr_palm,9)   = FS_MIXED(nzb,pr_palm,9) + surf_def%us(m) *            &
                                                                        rmask(j,i,sr)
                    !$ACC ATOMIC UPDATE
-                   sums_l(nzb+1,pr_palm,tn) = sums_l(nzb+1,pr_palm,tn) + surf_def%usws(m) *        &
+                   FS_MIXED(nzb+1,pr_palm,9) = FS_MIXED(nzb+1,pr_palm,9) + surf_def%usws(m) *        &
                                               momentumflux_output_conversion(k) * rmask(j,i,sr)
                    !$ACC ATOMIC UPDATE
-                   sums_l(nzb+2,pr_palm,tn) = sums_l(nzb+2,pr_palm,tn) + surf_def%vsws(m) *        &
+                   FS_MIXED(nzb+2,pr_palm,9) = FS_MIXED(nzb+2,pr_palm,9) + surf_def%vsws(m) *        &
                                               momentumflux_output_conversion(k) * rmask(j,i,sr)
                    !$ACC ATOMIC UPDATE
-                   sums_l(nzb+3,pr_palm,tn) = sums_l(nzb+3,pr_palm,tn) + surf_def%ts(m) *          &
+                   FS_MIXED(nzb+3,pr_palm,9) = FS_MIXED(nzb+3,pr_palm,9) + surf_def%ts(m) *          &
                                                                          rmask(j,i,sr)
                    IF ( humidity )  THEN
                       !$ACC ATOMIC UPDATE
-                      sums_l(nzb+12,pr_palm,tn) = sums_l(nzb+12,pr_palm,tn) + surf_def%qs(m) *     &
+                      FS_MIXED(nzb+12,pr_palm,9) = FS_MIXED(nzb+12,pr_palm,9) + surf_def%qs(m) *     &
                                                                               rmask(j,i,sr)
                    ENDIF
 #if ! defined( _OPENACC )
@@ -783,7 +819,7 @@
 !
 !--                Summation of surface temperature.
                    !$ACC ATOMIC UPDATE
-                   sums_l(nzb+14,pr_palm,tn) = sums_l(nzb+14,pr_palm,tn) + surf_def%pt_surface(m) *&
+                   FS_MIXED(nzb+14,pr_palm,9) = FS_MIXED(nzb+14,pr_palm,9) + surf_def%pt_surface(m) *&
                                                                            rmask(j,i,sr)
                 ENDIF
              ENDDO
@@ -793,20 +829,20 @@
 
                    k = surf_lsm%k(m) + surf_lsm%koff(m)
                    !$ACC ATOMIC UPDATE
-                   sums_l(nzb,pr_palm,tn)   = sums_l(nzb,pr_palm,tn) + surf_lsm%us(m) *            &
+                   FS_MIXED(nzb,pr_palm,9)   = FS_MIXED(nzb,pr_palm,9) + surf_lsm%us(m) *            &
                                                                        rmask(j,i,sr)
                    !$ACC ATOMIC UPDATE
-                   sums_l(nzb+1,pr_palm,tn) = sums_l(nzb+1,pr_palm,tn) + surf_lsm%usws(m) *        &
+                   FS_MIXED(nzb+1,pr_palm,9) = FS_MIXED(nzb+1,pr_palm,9) + surf_lsm%usws(m) *        &
                                               momentumflux_output_conversion(k) * rmask(j,i,sr)
                    !$ACC ATOMIC UPDATE
-                   sums_l(nzb+2,pr_palm,tn) = sums_l(nzb+2,pr_palm,tn) + surf_lsm%vsws(m) *        &
+                   FS_MIXED(nzb+2,pr_palm,9) = FS_MIXED(nzb+2,pr_palm,9) + surf_lsm%vsws(m) *        &
                                               momentumflux_output_conversion(k) * rmask(j,i,sr)
                    !$ACC ATOMIC UPDATE
-                   sums_l(nzb+3,pr_palm,tn) = sums_l(nzb+3,pr_palm,tn) + surf_lsm%ts(m) *          &
+                   FS_MIXED(nzb+3,pr_palm,9) = FS_MIXED(nzb+3,pr_palm,9) + surf_lsm%ts(m) *          &
                                                                          rmask(j,i,sr)
                    IF ( humidity )  THEN
                       !$ACC ATOMIC UPDATE
-                      sums_l(nzb+12,pr_palm,tn) = sums_l(nzb+12,pr_palm,tn) + surf_lsm%qs(m) *     &
+                      FS_MIXED(nzb+12,pr_palm,9) = FS_MIXED(nzb+12,pr_palm,9) + surf_lsm%qs(m) *     &
                                                                               rmask(j,i,sr)
                    ENDIF
 #if ! defined( _OPENACC )
@@ -818,7 +854,7 @@
 !
 !--                Summation of surface temperature.
                    !$ACC ATOMIC UPDATE
-                   sums_l(nzb+14,pr_palm,tn) = sums_l(nzb+14,pr_palm,tn) + surf_lsm%pt_surface(m) *&
+                   FS_MIXED(nzb+14,pr_palm,9) = FS_MIXED(nzb+14,pr_palm,9) + surf_lsm%pt_surface(m) *&
                                                                            rmask(j,i,sr)
                 ENDIF
              ENDDO
@@ -829,20 +865,20 @@
 
                    k = surf_usm%k(m) + surf_usm%koff(m)
                    !$ACC ATOMIC UPDATE
-                   sums_l(nzb,pr_palm,tn)   = sums_l(nzb,pr_palm,tn) + surf_usm%us(m) *            &
+                   FS_MIXED(nzb,pr_palm,9)   = FS_MIXED(nzb,pr_palm,9) + surf_usm%us(m) *            &
                                                                        rmask(j,i,sr)
                    !$ACC ATOMIC UPDATE
-                   sums_l(nzb+1,pr_palm,tn) = sums_l(nzb+1,pr_palm,tn) + surf_usm%usws(m) *        &
+                   FS_MIXED(nzb+1,pr_palm,9) = FS_MIXED(nzb+1,pr_palm,9) + surf_usm%usws(m) *        &
                                               momentumflux_output_conversion(k) * rmask(j,i,sr)
                    !$ACC ATOMIC UPDATE
-                   sums_l(nzb+2,pr_palm,tn) = sums_l(nzb+2,pr_palm,tn) + surf_usm%vsws(m) *        &
+                   FS_MIXED(nzb+2,pr_palm,9) = FS_MIXED(nzb+2,pr_palm,9) + surf_usm%vsws(m) *        &
                                               momentumflux_output_conversion(k) * rmask(j,i,sr)
                    !$ACC ATOMIC UPDATE
-                   sums_l(nzb+3,pr_palm,tn) = sums_l(nzb+3,pr_palm,tn) + surf_usm%ts(m) *          &
+                   FS_MIXED(nzb+3,pr_palm,9) = FS_MIXED(nzb+3,pr_palm,9) + surf_usm%ts(m) *          &
                                                                          rmask(j,i,sr)
 #if ! defined( _OPENACC )
                    IF ( humidity )  THEN
-                      sums_l(nzb+12,pr_palm,tn) = sums_l(nzb+12,pr_palm,tn) + surf_usm%qs(m) *     &
+                      FS_MIXED(nzb+12,pr_palm,9) = FS_MIXED(nzb+12,pr_palm,9) + surf_usm%qs(m) *     &
                                                                               rmask(j,i,sr)
                    ENDIF
                    IF ( passive_scalar )  THEN
@@ -853,12 +889,40 @@
 !
 !--                Summation of surface temperature.
                    !$ACC ATOMIC UPDATE
-                   sums_l(nzb+14,pr_palm,tn) = sums_l(nzb+14,pr_palm,tn) + surf_usm%pt_surface(m) *&
+                   FS_MIXED(nzb+14,pr_palm,9) = FS_MIXED(nzb+14,pr_palm,9) + surf_usm%pt_surface(m) *&
                                                                            rmask(j,i,sr)
                 ENDIF
              ENDDO
           ENDDO !j-loop
        ENDDO !i-loop
+
+#if defined( PALM_FLOW_MIXED_SHARDS_ACTIVE )
+!  Merge only this segment's targets, adding to any earlier contributions.
+       !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(fm_value,fm_c) DEFAULT(PRESENT) IF(enable_openacc)
+       DO fm_b = 1, 9
+          DO fm_a = nzb, nzt+1
+             IF ( fm_b == 9 ) THEN
+                IF ( fm_a /= nzb .AND. fm_a /= nzb+1 .AND. fm_a /= nzb+2 .AND. &
+                     fm_a /= nzb+3 .AND. fm_a /= nzb+4 .AND. fm_a /= nzb+12 .AND. &
+                     fm_a /= nzb+14 ) CYCLE
+             ENDIF
+             fm_value = 0.0_wp
+             !$ACC LOOP SEQ
+             DO fm_c = 1, fm_nparts
+                fm_value = fm_value + fs_mixed(fm_a,fm_b,fm_c)
+             ENDDO
+             IF (fm_b == 1) sums_l(fm_a,3,tn) = sums_l(fm_a,3,tn) + fm_value
+             IF (fm_b == 2) sums_l(fm_a,8,tn) = sums_l(fm_a,8,tn) + fm_value
+             IF (fm_b == 3) sums_l(fm_a,9,tn) = sums_l(fm_a,9,tn) + fm_value
+             IF (fm_b == 4) sums_l(fm_a,10,tn) = sums_l(fm_a,10,tn) + fm_value
+             IF (fm_b == 5) sums_l(fm_a,40,tn) = sums_l(fm_a,40,tn) + fm_value
+             IF (fm_b == 6) sums_l(fm_a,33,tn) = sums_l(fm_a,33,tn) + fm_value
+             IF (fm_b == 7) sums_l(fm_a,38,tn) = sums_l(fm_a,38,tn) + fm_value
+             IF (fm_b == 8) sums_l(fm_a,121,tn) = sums_l(fm_a,121,tn) + fm_value
+             IF (fm_b == 9) sums_l(fm_a,pr_palm,tn) = sums_l(fm_a,pr_palm,tn) + fm_value
+          ENDDO
+       ENDDO
+#endif
 
 !
 !--    Computation of statistics when ws-scheme is not used. Else these
@@ -2471,6 +2535,13 @@
 !-- Set flag for other UPs (e.g. output routines, but also buoyancy).
 !-- This flag is reset after each time step in time_integration.
     flow_statistics_called = .TRUE.
+
+#if defined( PALM_FLOW_MIXED_SHARDS_ACTIVE )
+    !$ACC EXIT DATA DELETE(fs_mixed) IF(enable_openacc)
+    DEALLOCATE( fs_mixed )
+#endif
+#undef FS_MIXED
+#undef PALM_FLOW_MIXED_SHARDS_ACTIVE
 
 #if defined( PALM_FLOW_FLUX_SHARDS_ACTIVE )
     !$ACC EXIT DATA DELETE(fs_flux) IF(enable_openacc)
