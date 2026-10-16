@@ -3730,17 +3730,17 @@
 !--    the caller side.
 
 
-    REAL(wp), DIMENSION(nzb:nzt+1)         ::  diss_n     !< discretized artificial dissipation at northward-side
-    REAL(wp), DIMENSION(nzb:nzt+1)         ::  diss_r     !< discretized artificial dissipation at rightward-side
+    REAL(wp) :: diss_n     !< discretized artificial dissipation at northward-side
+    REAL(wp) :: diss_r     !< discretized artificial dissipation at rightward-side
     REAL(wp), DIMENSION(nzb:nzt+1)         ::  diss_t     !< discretized artificial dissipation at top of the grid box
-    REAL(wp), DIMENSION(nzb:nzt+1)         ::  flux_n     !< discretized 6th-order flux at northward-side of the grid box
-    REAL(wp), DIMENSION(nzb:nzt+1)         ::  flux_r     !< discretized 6th-order flux at rightward-side of the grid box
+    REAL(wp) :: flux_n     !< discretized 6th-order flux at northward-side of the grid box
+    REAL(wp) :: flux_r     !< discretized 6th-order flux at rightward-side of the grid box
     REAL(wp), DIMENSION(nzb:nzt+1)         ::  flux_t     !< discretized 6th-order flux at top of the grid box
 
-    REAL(wp), DIMENSION(nzb+1:nzt)         ::  diss_l            !< discretized artificial dissipation at leftward-side
-    REAL(wp), DIMENSION(nzb+1:nzt)         ::  diss_s            !< discretized artificial dissipation at southward-side
-    REAL(wp), DIMENSION(nzb+1:nzt)         ::  flux_l            !< discretized 6th-order flux at leftward-side
-    REAL(wp), DIMENSION(nzb+1:nzt)         ::  flux_s            !< discretized 6th-order flux at southward-side
+    REAL(wp) :: diss_l            !< discretized artificial dissipation at leftward-side
+    REAL(wp) :: diss_s            !< discretized artificial dissipation at southward-side
+    REAL(wp) :: flux_l            !< discretized 6th-order flux at leftward-side
+    REAL(wp) :: flux_s            !< discretized 6th-order flux at southward-side
 #if ! defined( _OPENACC )
     REAL(wp), DIMENSION(nzb+1:nzt)         ::  swap_diss_y_local !< discretized artificial dissipation at southward-side
     REAL(wp), DIMENSION(nzb+1:nzt)         ::  swap_flux_y_local !< discretized 6th-order flux at northward-side
@@ -3803,7 +3803,7 @@
     ENDIF
 #endif
 
-    !$ACC PARALLEL LOOP COLLAPSE(2) FIRSTPRIVATE(tn, sk_num) &
+    !$ACC PARALLEL LOOP GANG COLLAPSE(2) VECTOR_LENGTH(64) FIRSTPRIVATE(tn, sk_num) &
     !$ACC PRIVATE(i, j, k, k_mm, k_pp, k_ppp) &
     !$ACC PRIVATE(ibit0, ibit1, ibit2, ibit3, ibit4, ibit5) &
     !$ACC PRIVATE(ibit0_l, ibit1_l, ibit2_l) &
@@ -3977,208 +3977,6 @@
           ENDIF
 #endif
 !
-!--       Now compute the fluxes and tendency terms for the horizontal and vertical parts up to the
-!--       top of the highest topography.
-          DO  k = nzb+1, nzb_max_l
-!
-!--          Note: It is faster to conduct all multiplications explicitly, e.g. * adv_sca_5 ... than
-!--          to determine a factor and multiplicate the flux at the end.
-             ibit2 = REAL( IBITS(advc_flag(k,j,i),2,1), KIND = wp )
-             ibit1 = REAL( IBITS(advc_flag(k,j,i),1,1), KIND = wp )
-             ibit0 = REAL( IBITS(advc_flag(k,j,i),0,1), KIND = wp )
-!
-!--          Multiply Stokes velocity with topography flags to avoid possible fluxes at walls.
-             u_comp    = u(k,j,i+1) - u_gtrans + u_stokes_zu(k)                                    &
-                         * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i+1), 1 ) )
-             flux_r(k) = u_comp * (                                                                &
-                         (  37.0_wp * ibit2 * adv_sca_5                                            &
-                         +   7.0_wp * ibit1 * adv_sca_3                                            &
-                         +            ibit0 * adv_sca_1 ) * ( sk(k,j,i+1) + sk(k,j,i)   )          &
-                         - ( 8.0_wp * ibit2 * adv_sca_5                                            &
-                         +            ibit1 * adv_sca_3 ) * ( sk(k,j,i+2) + sk(k,j,i-1) )          &
-                         + (          ibit2 * adv_sca_5 ) * ( sk(k,j,i+3) + sk(k,j,i-2) )          &
-                                  )
-
-             diss_r(k) = -ABS( u_comp ) * (                                                        &
-                           (  10.0_wp * ibit2 * adv_sca_5                                          &
-                           +   3.0_wp * ibit1 * adv_sca_3                                          &
-                           +            ibit0 * adv_sca_1 ) * ( sk(k,j,i+1) - sk(k,j,i)  )         &
-                           - ( 5.0_wp * ibit2 * adv_sca_5                                          &
-                           +            ibit1 * adv_sca_3 ) * ( sk(k,j,i+2) - sk(k,j,i-1) )        &
-                           + (          ibit2 * adv_sca_5 ) * ( sk(k,j,i+3) - sk(k,j,i-2) )        &
-                                          )
-#if defined( _OPENACC )
-!
-!--          Recompute the left fluxes.
-             ibit2_l = REAL( IBITS(advc_flag(k,j,i-1),2,1), KIND = wp )
-             ibit1_l = REAL( IBITS(advc_flag(k,j,i-1),1,1), KIND = wp )
-             ibit0_l = REAL( IBITS(advc_flag(k,j,i-1),0,1), KIND = wp )
-!
-!--          Multiply Stokes velocity with topography flags to avoid possible fluxes at walls.
-             u_comp_l                  = u(k,j,i) - u_gtrans + u_stokes_zu(k)                      &
-                                         * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 1 ) )
-             flux_l(k)                 = u_comp_l * (                                              &
-                                           ( 37.0_wp * ibit2_l * adv_sca_5                         &
-                                         +    7.0_wp * ibit1_l * adv_sca_3                         &
-                                         +             ibit0_l * adv_sca_1                         &
-                                           ) *                                                     &
-                                           ( sk(k,j,i)   + sk(k,j,i-1)    )                        &
-                                         - (  8.0_wp * ibit2_l * adv_sca_5                         &
-                                         +              ibit1_l * adv_sca_3                        &
-                                           ) *                                                     &
-                                           ( sk(k,j,i+1) + sk(k,j,i-2)    )                        &
-                                         + (           ibit2_l * adv_sca_5                         &
-                                           ) *                                                     &
-                                           ( sk(k,j,i+2) + sk(k,j,i-3)    )                        &
-                                                    )
-
-             diss_l(k)                 = -ABS( u_comp_l ) * (                                      &
-                                           ( 10.0_wp * ibit2_l * adv_sca_5                         &
-                                         +    3.0_wp * ibit1_l * adv_sca_3                         &
-                                         +             ibit0_l * adv_sca_1                         &
-                                           ) *                                                     &
-                                           ( sk(k,j,i)   - sk(k,j,i-1) )                           &
-                                         - (  5.0_wp * ibit2_l * adv_sca_5                         &
-                                         +              ibit1_l * adv_sca_3                        &
-                                           ) *                                                     &
-                                           ( sk(k,j,i+1) - sk(k,j,i-2) )                           &
-                                         + (           ibit2_l * adv_sca_5                         &
-                                           ) *                                                     &
-                                           ( sk(k,j,i+2) - sk(k,j,i-3) )                           &
-                                                            )
-#else
-             flux_l(k) = swap_flux_x_local(k,j)
-             diss_l(k) = swap_diss_x_local(k,j)
-#endif
-             ibit5 = REAL( IBITS(advc_flag(k,j,i),5,1), KIND = wp )
-             ibit4 = REAL( IBITS(advc_flag(k,j,i),4,1), KIND = wp )
-             ibit3 = REAL( IBITS(advc_flag(k,j,i),3,1), KIND = wp )
-!
-!--          Multiply Stokes velocity with topography flags to avoid possible fluxes at walls.
-             v_comp    = v(k,j+1,i) - v_gtrans + v_stokes_zu(k)                                    &
-                         * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j+1,i), 2 ) )
-             flux_n(k) = v_comp * (                                                                &
-                         (  37.0_wp * ibit5 * adv_sca_5                                            &
-                         +   7.0_wp * ibit4 * adv_sca_3                                            &
-                         +            ibit3 * adv_sca_1 ) * ( sk(k,j+1,i) + sk(k,j,i)   )          &
-                         - ( 8.0_wp * ibit5 * adv_sca_5                                            &
-                         +            ibit4 * adv_sca_3 ) * ( sk(k,j+2,i) + sk(k,j-1,i) )          &
-                         + (          ibit5 * adv_sca_5 ) * ( sk(k,j+3,i) + sk(k,j-2,i) )          &
-                                  )
-
-             diss_n(k) = -ABS( v_comp ) * (                                                        &
-                         (  10.0_wp * ibit5 * adv_sca_5                                            &
-                         +   3.0_wp * ibit4 * adv_sca_3                                            &
-                         +            ibit3 * adv_sca_1 ) * ( sk(k,j+1,i) - sk(k,j,i)   )          &
-                         - ( 5.0_wp * ibit5 * adv_sca_5                                            &
-                         +            ibit4 * adv_sca_3 ) * ( sk(k,j+2,i) - sk(k,j-1,i) )          &
-                         + (          ibit5 * adv_sca_5 ) * ( sk(k,j+3,i) - sk(k,j-2,i) )          &
-                                          )
-#if defined( _OPENACC )
-!
-!--          Recompute the south fluxes.
-             ibit5_s = REAL( IBITS(advc_flag(k,j-1,i),5,1), KIND = wp )
-             ibit4_s = REAL( IBITS(advc_flag(k,j-1,i),4,1), KIND = wp )
-             ibit3_s = REAL( IBITS(advc_flag(k,j-1,i),3,1), KIND = wp )
-!
-!--          Multiply Stokes velocity with topography flags to avoid possible fluxes at walls.
-             v_comp_s                = v(k,j,i) - v_gtrans + v_stokes_zu(k)                        &
-                                       * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 2 ) )
-             flux_s(k)               = v_comp_s * (                                                &
-                                         ( 37.0_wp * ibit5_s * adv_sca_5                           &
-                                       +    7.0_wp * ibit4_s * adv_sca_3                           &
-                                       +             ibit3_s * adv_sca_1                           &
-                                         ) *                                                       &
-                                       ( sk(k,j,i)   + sk(k,j-1,i)     )                           &
-                                       - (  8.0_wp * ibit5_s * adv_sca_5                           &
-                                       +             ibit4_s * adv_sca_3                           &
-                                         ) *                                                       &
-                                       ( sk(k,j+1,i) + sk(k,j-2,i)    )                            &
-                                       + (           ibit5_s * adv_sca_5                           &
-                                         ) *                                                       &
-                                       ( sk(k,j+2,i) + sk(k,j-3,i)    )                            &
-                                                  )
-
-             diss_s(k)               = -ABS( v_comp_s ) * (                                        &
-                                         ( 10.0_wp * ibit5_s * adv_sca_5                           &
-                                       +    3.0_wp * ibit4_s * adv_sca_3                           &
-                                       +             ibit3_s * adv_sca_1                           &
-                                         ) *                                                       &
-                                       ( sk(k,j,i)   - sk(k,j-1,i)    )                            &
-                                       - (  5.0_wp * ibit5_s * adv_sca_5                           &
-                                       +             ibit4_s * adv_sca_3                           &
-                                         ) *                                                       &
-                                       ( sk(k,j+1,i) - sk(k,j-2,i)    )                            &
-                                       + (           ibit5_s * adv_sca_5                           &
-                                          ) *                                                      &
-                                       ( sk(k,j+2,i) - sk(k,j-3,i)    )                            &
-                                                         )
-#else
-             flux_s(k) = swap_flux_y_local(k)
-             diss_s(k) = swap_diss_y_local(k)
-#endif
-          ENDDO
-!
-!--       Now compute the fluxes and tendency terms for the horizontal and vertical parts above the
-!--       top of the highest topography. No degradation for the horizontal parts, but for the
-!--       vertical it is still needed.
-          DO  k = nzb_max_l+1, nzt
-
-             u_comp    = u(k,j,i+1) - u_gtrans + u_stokes_zu(k)
-             flux_r(k) = u_comp * (                                                                &
-                           37.0_wp * ( sk(k,j,i+1) + sk(k,j,i)   )                                 &
-                         -  8.0_wp * ( sk(k,j,i+2) + sk(k,j,i-1) )                                 &
-                         +           ( sk(k,j,i+3) + sk(k,j,i-2) ) ) * adv_sca_5
-             diss_r(k) = -ABS( u_comp ) * (                                                        &
-                           10.0_wp * ( sk(k,j,i+1) - sk(k,j,i)   )                                 &
-                         -  5.0_wp * ( sk(k,j,i+2) - sk(k,j,i-1) )                                 &
-                         +           ( sk(k,j,i+3) - sk(k,j,i-2) ) ) * adv_sca_5
-#if defined( _OPENACC )
-!
-!--          Recompute the left fluxes.
-             u_comp_l  = u(k,j,i) - u_gtrans + u_stokes_zu(k)
-             flux_l(k) = u_comp_l * (                                                              &
-                           37.0_wp * ( sk(k,j,i)   + sk(k,j,i-1) )                                 &
-                         -  8.0_wp * ( sk(k,j,i+1) + sk(k,j,i-2) )                                 &
-                         +           ( sk(k,j,i+2) + sk(k,j,i-3) ) ) * adv_sca_5
-
-             diss_l(k) = -ABS( u_comp_l ) * (                                                      &
-                            10.0_wp * ( sk(k,j,i)   - sk(k,j,i-1) )                                &
-                         -   5.0_wp * ( sk(k,j,i+1) - sk(k,j,i-2) )                                &
-                         +            ( sk(k,j,i+2) - sk(k,j,i-3) ) ) * adv_sca_5
-#else
-             flux_l(k) = swap_flux_x_local(k,j)
-             diss_l(k) = swap_diss_x_local(k,j)
-
-#endif
-
-             v_comp    = v(k,j+1,i) - v_gtrans + v_stokes_zu(k)
-             flux_n(k) = v_comp * (                                                                &
-                           37.0_wp * ( sk(k,j+1,i) + sk(k,j,i)   )                                 &
-                         -  8.0_wp * ( sk(k,j+2,i) + sk(k,j-1,i) )                                 &
-                         +           ( sk(k,j+3,i) + sk(k,j-2,i) ) ) * adv_sca_5
-             diss_n(k) = -ABS( v_comp ) * (                                                        &
-                           10.0_wp * ( sk(k,j+1,i) - sk(k,j,i)   )                                 &
-                         -  5.0_wp * ( sk(k,j+2,i) - sk(k,j-1,i) )                                 &
-                         +           ( sk(k,j+3,i) - sk(k,j-2,i) ) ) * adv_sca_5
-#if defined( _OPENACC )
-!
-!--          Recompute the south fluxes.
-             v_comp_s  = v(k,j,i) - v_gtrans + v_stokes_zu(k)
-             flux_s(k) = v_comp_s  * (                                                             &
-                           37.0_wp * ( sk(k,j,i)   + sk(k,j-1,i) )                                 &
-                         -  8.0_wp * ( sk(k,j+1,i) + sk(k,j-2,i) )                                 &
-                         +           ( sk(k,j+2,i) + sk(k,j-3,i) ) ) * adv_sca_5
-             diss_s(k) = -ABS( v_comp_s ) * (                                                      &
-                           10.0_wp * ( sk(k,j,i)   - sk(k,j-1,i) )                                 &
-                         -  5.0_wp * ( sk(k,j+1,i) - sk(k,j-2,i) )                                 &
-                         +           ( sk(k,j+2,i) - sk(k,j-3,i) ) ) * adv_sca_5
-#else
-             flux_s(k) = swap_flux_y_local(k)
-             diss_s(k) = swap_diss_y_local(k)
-#endif
-          ENDDO
-!
 !--       Now, compute vertical fluxes. Split loop into a part treating the lowest grid points with
 !--       indirect indexing, a main loop without indirect indexing, and a loop for the uppermost
 !--       grid points with indirect indexing. This allows better vectorization for the main loop.
@@ -4192,6 +3990,8 @@
           diss_t(nzb) = -ABS( w(k,j,i) ) * rho_air_zw(k) * ( ibit6 * adv_sca_1 )                   &
                                                          * ( sk(k+1,j,i) - sk(k,j,i) )
 
+          !$ACC LOOP VECTOR &
+          !$ACC PRIVATE(k_mm,k_pp,k_ppp,ibit6,ibit7,ibit8)
           DO  k = nzb+1, nzb+1
              ibit8 = REAL( IBITS(advc_flag(k,j,i),8,1), KIND = wp )
              ibit7 = REAL( IBITS(advc_flag(k,j,i),7,1), KIND = wp )
@@ -4220,6 +4020,8 @@
                                                             )
           ENDDO
 
+          !$ACC LOOP VECTOR &
+          !$ACC PRIVATE(ibit6,ibit7,ibit8)
           DO  k = nzb+2, nzt-2
              ibit8 = REAL( IBITS(advc_flag(k,j,i),8,1), KIND = wp )
              ibit7 = REAL( IBITS(advc_flag(k,j,i),7,1), KIND = wp )
@@ -4244,6 +4046,8 @@
                                                             )
           ENDDO
 
+          !$ACC LOOP VECTOR &
+          !$ACC PRIVATE(k_mm,k_pp,k_ppp,ibit6,ibit7,ibit8)
           DO  k = nzt-1, nzt-symmetry_flag
              ibit8 = REAL( IBITS(advc_flag(k,j,i),8,1), KIND = wp )
              ibit7 = REAL( IBITS(advc_flag(k,j,i),7,1), KIND = wp )
@@ -4288,7 +4092,155 @@
           flux_t(nzt+1) = 0.0_wp
           diss_t(nzt+1) = 0.0_wp
 
+!
+!--       Produce and consume horizontal faces at the same height. These temporaries are private
+!--       to each vector lane; the vertical face profiles are shared within the column's gang.
+!--       The CPU path retains cached faces from the previous column. Updating each cache entry
+!--       after its tendency is safe because the next height uses a different entry.
+          !$ACC LOOP VECTOR &
+          !$ACC PRIVATE(ibit0,ibit1,ibit2,ibit3,ibit4,ibit5) &
+          !$ACC PRIVATE(ibit6,ibit7,ibit8,ibit0_l,ibit1_l,ibit2_l) &
+          !$ACC PRIVATE(ibit3_s,ibit4_s,ibit5_s,diss_l,diss_r,flux_l) &
+          !$ACC PRIVATE(flux_r,diss_n,diss_s,flux_s,flux_n,flux_d) &
+          !$ACC PRIVATE(diss_d,div,u_comp,u_comp_l,v_comp,v_comp_s)
           DO  k = nzb+1, nzb_max_l
+!
+!--          Note: It is faster to conduct all multiplications explicitly, e.g. * adv_sca_5 ... than
+!--          to determine a factor and multiplicate the flux at the end.
+             ibit2 = REAL( IBITS(advc_flag(k,j,i),2,1), KIND = wp )
+             ibit1 = REAL( IBITS(advc_flag(k,j,i),1,1), KIND = wp )
+             ibit0 = REAL( IBITS(advc_flag(k,j,i),0,1), KIND = wp )
+!
+!--          Multiply Stokes velocity with topography flags to avoid possible fluxes at walls.
+             u_comp    = u(k,j,i+1) - u_gtrans + u_stokes_zu(k)                                    &
+                         * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i+1), 1 ) )
+             flux_r = u_comp * (                                                                &
+                         (  37.0_wp * ibit2 * adv_sca_5                                            &
+                         +   7.0_wp * ibit1 * adv_sca_3                                            &
+                         +            ibit0 * adv_sca_1 ) * ( sk(k,j,i+1) + sk(k,j,i)   )          &
+                         - ( 8.0_wp * ibit2 * adv_sca_5                                            &
+                         +            ibit1 * adv_sca_3 ) * ( sk(k,j,i+2) + sk(k,j,i-1) )          &
+                         + (          ibit2 * adv_sca_5 ) * ( sk(k,j,i+3) + sk(k,j,i-2) )          &
+                                  )
+
+             diss_r = -ABS( u_comp ) * (                                                        &
+                           (  10.0_wp * ibit2 * adv_sca_5                                          &
+                           +   3.0_wp * ibit1 * adv_sca_3                                          &
+                           +            ibit0 * adv_sca_1 ) * ( sk(k,j,i+1) - sk(k,j,i)  )         &
+                           - ( 5.0_wp * ibit2 * adv_sca_5                                          &
+                           +            ibit1 * adv_sca_3 ) * ( sk(k,j,i+2) - sk(k,j,i-1) )        &
+                           + (          ibit2 * adv_sca_5 ) * ( sk(k,j,i+3) - sk(k,j,i-2) )        &
+                                          )
+#if defined( _OPENACC )
+!
+!--          Recompute the left fluxes.
+             ibit2_l = REAL( IBITS(advc_flag(k,j,i-1),2,1), KIND = wp )
+             ibit1_l = REAL( IBITS(advc_flag(k,j,i-1),1,1), KIND = wp )
+             ibit0_l = REAL( IBITS(advc_flag(k,j,i-1),0,1), KIND = wp )
+!
+!--          Multiply Stokes velocity with topography flags to avoid possible fluxes at walls.
+             u_comp_l                  = u(k,j,i) - u_gtrans + u_stokes_zu(k)                      &
+                                         * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 1 ) )
+             flux_l                 = u_comp_l * (                                              &
+                                           ( 37.0_wp * ibit2_l * adv_sca_5                         &
+                                         +    7.0_wp * ibit1_l * adv_sca_3                         &
+                                         +             ibit0_l * adv_sca_1                         &
+                                           ) *                                                     &
+                                           ( sk(k,j,i)   + sk(k,j,i-1)    )                        &
+                                         - (  8.0_wp * ibit2_l * adv_sca_5                         &
+                                         +              ibit1_l * adv_sca_3                        &
+                                           ) *                                                     &
+                                           ( sk(k,j,i+1) + sk(k,j,i-2)    )                        &
+                                         + (           ibit2_l * adv_sca_5                         &
+                                           ) *                                                     &
+                                           ( sk(k,j,i+2) + sk(k,j,i-3)    )                        &
+                                                    )
+
+             diss_l                 = -ABS( u_comp_l ) * (                                      &
+                                           ( 10.0_wp * ibit2_l * adv_sca_5                         &
+                                         +    3.0_wp * ibit1_l * adv_sca_3                         &
+                                         +             ibit0_l * adv_sca_1                         &
+                                           ) *                                                     &
+                                           ( sk(k,j,i)   - sk(k,j,i-1) )                           &
+                                         - (  5.0_wp * ibit2_l * adv_sca_5                         &
+                                         +              ibit1_l * adv_sca_3                        &
+                                           ) *                                                     &
+                                           ( sk(k,j,i+1) - sk(k,j,i-2) )                           &
+                                         + (           ibit2_l * adv_sca_5                         &
+                                           ) *                                                     &
+                                           ( sk(k,j,i+2) - sk(k,j,i-3) )                           &
+                                                            )
+#else
+             flux_l = swap_flux_x_local(k,j)
+             diss_l = swap_diss_x_local(k,j)
+#endif
+             ibit5 = REAL( IBITS(advc_flag(k,j,i),5,1), KIND = wp )
+             ibit4 = REAL( IBITS(advc_flag(k,j,i),4,1), KIND = wp )
+             ibit3 = REAL( IBITS(advc_flag(k,j,i),3,1), KIND = wp )
+!
+!--          Multiply Stokes velocity with topography flags to avoid possible fluxes at walls.
+             v_comp    = v(k,j+1,i) - v_gtrans + v_stokes_zu(k)                                    &
+                         * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j+1,i), 2 ) )
+             flux_n = v_comp * (                                                                &
+                         (  37.0_wp * ibit5 * adv_sca_5                                            &
+                         +   7.0_wp * ibit4 * adv_sca_3                                            &
+                         +            ibit3 * adv_sca_1 ) * ( sk(k,j+1,i) + sk(k,j,i)   )          &
+                         - ( 8.0_wp * ibit5 * adv_sca_5                                            &
+                         +            ibit4 * adv_sca_3 ) * ( sk(k,j+2,i) + sk(k,j-1,i) )          &
+                         + (          ibit5 * adv_sca_5 ) * ( sk(k,j+3,i) + sk(k,j-2,i) )          &
+                                  )
+
+             diss_n = -ABS( v_comp ) * (                                                        &
+                         (  10.0_wp * ibit5 * adv_sca_5                                            &
+                         +   3.0_wp * ibit4 * adv_sca_3                                            &
+                         +            ibit3 * adv_sca_1 ) * ( sk(k,j+1,i) - sk(k,j,i)   )          &
+                         - ( 5.0_wp * ibit5 * adv_sca_5                                            &
+                         +            ibit4 * adv_sca_3 ) * ( sk(k,j+2,i) - sk(k,j-1,i) )          &
+                         + (          ibit5 * adv_sca_5 ) * ( sk(k,j+3,i) - sk(k,j-2,i) )          &
+                                          )
+#if defined( _OPENACC )
+!
+!--          Recompute the south fluxes.
+             ibit5_s = REAL( IBITS(advc_flag(k,j-1,i),5,1), KIND = wp )
+             ibit4_s = REAL( IBITS(advc_flag(k,j-1,i),4,1), KIND = wp )
+             ibit3_s = REAL( IBITS(advc_flag(k,j-1,i),3,1), KIND = wp )
+!
+!--          Multiply Stokes velocity with topography flags to avoid possible fluxes at walls.
+             v_comp_s                = v(k,j,i) - v_gtrans + v_stokes_zu(k)                        &
+                                       * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 2 ) )
+             flux_s               = v_comp_s * (                                                &
+                                         ( 37.0_wp * ibit5_s * adv_sca_5                           &
+                                       +    7.0_wp * ibit4_s * adv_sca_3                           &
+                                       +             ibit3_s * adv_sca_1                           &
+                                         ) *                                                       &
+                                       ( sk(k,j,i)   + sk(k,j-1,i)     )                           &
+                                       - (  8.0_wp * ibit5_s * adv_sca_5                           &
+                                       +             ibit4_s * adv_sca_3                           &
+                                         ) *                                                       &
+                                       ( sk(k,j+1,i) + sk(k,j-2,i)    )                            &
+                                       + (           ibit5_s * adv_sca_5                           &
+                                         ) *                                                       &
+                                       ( sk(k,j+2,i) + sk(k,j-3,i)    )                            &
+                                                  )
+
+             diss_s               = -ABS( v_comp_s ) * (                                        &
+                                         ( 10.0_wp * ibit5_s * adv_sca_5                           &
+                                       +    3.0_wp * ibit4_s * adv_sca_3                           &
+                                       +             ibit3_s * adv_sca_1                           &
+                                         ) *                                                       &
+                                       ( sk(k,j,i)   - sk(k,j-1,i)    )                            &
+                                       - (  5.0_wp * ibit5_s * adv_sca_5                           &
+                                       +             ibit4_s * adv_sca_3                           &
+                                         ) *                                                       &
+                                       ( sk(k,j+1,i) - sk(k,j-2,i)    )                            &
+                                       + (           ibit5_s * adv_sca_5                           &
+                                          ) *                                                      &
+                                       ( sk(k,j+2,i) - sk(k,j-3,i)    )                            &
+                                                         )
+#else
+             flux_s = swap_flux_y_local(k)
+             diss_s = swap_diss_y_local(k)
+#endif
 
              flux_d = flux_t(k-1)
              diss_d = diss_t(k-1)
@@ -4333,24 +4285,82 @@
                              ) * drho_air(k) * ddzw(k)
 
              tend(k,j,i) = tend(k,j,i) - (                                                         &
-                             ( flux_r(k) + diss_r(k) -                                             &
-                               flux_l(k) - diss_l(k) ) * ddx                                       &
-                           + ( flux_n(k) + diss_n(k) -                                             &
-                               flux_s(k) - diss_s(k) ) * ddy                                       &
+                             ( flux_r + diss_r -                                             &
+                               flux_l - diss_l ) * ddx                                       &
+                           + ( flux_n + diss_n -                                             &
+                               flux_s - diss_s ) * ddy                                       &
                            + ( flux_t(k) + diss_t(k) -                                             &
                                flux_d    - diss_d    ) * drho_air(k) * ddzw(k)                     &
                                          ) + sk(k,j,i) * div
 
 #if ! defined( _OPENACC )
-             swap_flux_y_local(k)   = flux_n(k)
-             swap_diss_y_local(k)   = diss_n(k)
-             swap_flux_x_local(k,j) = flux_r(k)
-             swap_diss_x_local(k,j) = diss_r(k)
+             swap_flux_y_local(k)   = flux_n
+             swap_diss_y_local(k)   = diss_n
+             swap_flux_x_local(k,j) = flux_r
+             swap_diss_x_local(k,j) = diss_r
 #endif
 
           ENDDO
 
+          !$ACC LOOP VECTOR &
+          !$ACC PRIVATE(diss_l,diss_r,flux_l,flux_r,diss_n,diss_s) &
+          !$ACC PRIVATE(flux_s,flux_n,flux_d,diss_d,div,u_comp) &
+          !$ACC PRIVATE(u_comp_l,v_comp,v_comp_s)
           DO  k = nzb_max_l+1, nzt
+
+             u_comp    = u(k,j,i+1) - u_gtrans + u_stokes_zu(k)
+             flux_r = u_comp * (                                                                &
+                           37.0_wp * ( sk(k,j,i+1) + sk(k,j,i)   )                                 &
+                         -  8.0_wp * ( sk(k,j,i+2) + sk(k,j,i-1) )                                 &
+                         +           ( sk(k,j,i+3) + sk(k,j,i-2) ) ) * adv_sca_5
+             diss_r = -ABS( u_comp ) * (                                                        &
+                           10.0_wp * ( sk(k,j,i+1) - sk(k,j,i)   )                                 &
+                         -  5.0_wp * ( sk(k,j,i+2) - sk(k,j,i-1) )                                 &
+                         +           ( sk(k,j,i+3) - sk(k,j,i-2) ) ) * adv_sca_5
+#if defined( _OPENACC )
+!
+!--          Recompute the left fluxes.
+             u_comp_l  = u(k,j,i) - u_gtrans + u_stokes_zu(k)
+             flux_l = u_comp_l * (                                                              &
+                           37.0_wp * ( sk(k,j,i)   + sk(k,j,i-1) )                                 &
+                         -  8.0_wp * ( sk(k,j,i+1) + sk(k,j,i-2) )                                 &
+                         +           ( sk(k,j,i+2) + sk(k,j,i-3) ) ) * adv_sca_5
+
+             diss_l = -ABS( u_comp_l ) * (                                                      &
+                            10.0_wp * ( sk(k,j,i)   - sk(k,j,i-1) )                                &
+                         -   5.0_wp * ( sk(k,j,i+1) - sk(k,j,i-2) )                                &
+                         +            ( sk(k,j,i+2) - sk(k,j,i-3) ) ) * adv_sca_5
+#else
+             flux_l = swap_flux_x_local(k,j)
+             diss_l = swap_diss_x_local(k,j)
+
+#endif
+
+             v_comp    = v(k,j+1,i) - v_gtrans + v_stokes_zu(k)
+             flux_n = v_comp * (                                                                &
+                           37.0_wp * ( sk(k,j+1,i) + sk(k,j,i)   )                                 &
+                         -  8.0_wp * ( sk(k,j+2,i) + sk(k,j-1,i) )                                 &
+                         +           ( sk(k,j+3,i) + sk(k,j-2,i) ) ) * adv_sca_5
+             diss_n = -ABS( v_comp ) * (                                                        &
+                           10.0_wp * ( sk(k,j+1,i) - sk(k,j,i)   )                                 &
+                         -  5.0_wp * ( sk(k,j+2,i) - sk(k,j-1,i) )                                 &
+                         +           ( sk(k,j+3,i) - sk(k,j-2,i) ) ) * adv_sca_5
+#if defined( _OPENACC )
+!
+!--          Recompute the south fluxes.
+             v_comp_s  = v(k,j,i) - v_gtrans + v_stokes_zu(k)
+             flux_s = v_comp_s  * (                                                             &
+                           37.0_wp * ( sk(k,j,i)   + sk(k,j-1,i) )                                 &
+                         -  8.0_wp * ( sk(k,j+1,i) + sk(k,j-2,i) )                                 &
+                         +           ( sk(k,j+2,i) + sk(k,j-3,i) ) ) * adv_sca_5
+             diss_s = -ABS( v_comp_s ) * (                                                      &
+                           10.0_wp * ( sk(k,j,i)   - sk(k,j-1,i) )                                 &
+                         -  5.0_wp * ( sk(k,j+1,i) - sk(k,j-2,i) )                                 &
+                         +           ( sk(k,j+2,i) - sk(k,j-3,i) ) ) * adv_sca_5
+#else
+             flux_s = swap_flux_y_local(k)
+             diss_s = swap_diss_y_local(k)
+#endif
 
              flux_d = flux_t(k-1)
              diss_d = diss_t(k-1)
@@ -4365,19 +4375,19 @@
                                                      ) * drho_air(k) * ddzw(k)
 
              tend(k,j,i) = tend(k,j,i) - (                                                         &
-                             ( flux_r(k) + diss_r(k) -                                             &
-                               flux_l(k) - diss_l(k) ) * ddx                                       &
-                           + ( flux_n(k) + diss_n(k) -                                             &
-                               flux_s(k) - diss_s(k) ) * ddy                                       &
+                             ( flux_r + diss_r -                                             &
+                               flux_l - diss_l ) * ddx                                       &
+                           + ( flux_n + diss_n -                                             &
+                               flux_s - diss_s ) * ddy                                       &
                            + ( flux_t(k) + diss_t(k) -                                             &
                                flux_d    - diss_d    ) * drho_air(k) * ddzw(k)                     &
                                          ) + sk(k,j,i) * div
 
 #if ! defined( _OPENACC )
-             swap_flux_y_local(k)   = flux_n(k)
-             swap_diss_y_local(k)   = diss_n(k)
-             swap_flux_x_local(k,j) = flux_r(k)
-             swap_diss_x_local(k,j) = diss_r(k)
+             swap_flux_y_local(k)   = flux_n
+             swap_diss_y_local(k)   = diss_n
+             swap_flux_x_local(k,j) = flux_r
+             swap_diss_x_local(k,j) = diss_r
 #endif
           ENDDO
 
@@ -4386,6 +4396,11 @@
           SELECT CASE ( sk_num )
 
              CASE ( 1 )
+#if defined( _OPENACC ) && defined( __palm_ws_sharded_stats )
+                !$ACC LOOP VECTOR PRIVATE(ws_contribution,ws_slot)
+#else
+                !$ACC LOOP VECTOR
+#endif
                 DO  k = nzb+1, nzt
 #if defined( _OPENACC ) && defined( __palm_ws_sharded_stats )
                    ws_contribution = &
@@ -4413,6 +4428,7 @@
                 ENDDO
 
              CASE ( 2 )
+                !$ACC LOOP VECTOR
                 DO  k = nzb+1, nzt
                    !$ACC ATOMIC UPDATE
                    sums_wssas_ws_l(k,tn) = sums_wssas_ws_l(k,tn) +                                 &
@@ -4426,6 +4442,11 @@
                 ENDDO
 
              CASE ( 3 )
+#if defined( _OPENACC ) && defined( __palm_ws_sharded_stats )
+                !$ACC LOOP VECTOR PRIVATE(ws_contribution,ws_slot)
+#else
+                !$ACC LOOP VECTOR
+#endif
                 DO  k = nzb+1, nzt
 #if defined( _OPENACC ) && defined( __palm_ws_sharded_stats )
                    ws_contribution = &
@@ -4453,6 +4474,7 @@
                 ENDDO
 
              CASE ( 4 )
+                !$ACC LOOP VECTOR
                 DO  k = nzb+1, nzt
                    !$ACC ATOMIC UPDATE
                    sums_wsqcs_ws_l(k,tn)  = sums_wsqcs_ws_l(k,tn) +                                &
@@ -4466,6 +4488,7 @@
                 ENDDO
 
              CASE ( 5 )
+                !$ACC LOOP VECTOR
                 DO  k = nzb+1, nzt
                    !$ACC ATOMIC UPDATE
                    sums_wsqrs_ws_l(k,tn)  = sums_wsqrs_ws_l(k,tn) +                                &
@@ -4479,6 +4502,7 @@
                 ENDDO
 
              CASE ( 6 )
+                !$ACC LOOP VECTOR
                 DO  k = nzb+1, nzt
                    !$ACC ATOMIC UPDATE
                    sums_wsncs_ws_l(k,tn)  = sums_wsncs_ws_l(k,tn) +                                &
@@ -4492,6 +4516,7 @@
                 ENDDO
 
              CASE ( 7 )
+                !$ACC LOOP VECTOR
                 DO  k = nzb+1, nzt
                    !$ACC ATOMIC UPDATE
                    sums_wsnrs_ws_l(k,tn)  = sums_wsnrs_ws_l(k,tn) +                                &
@@ -4505,6 +4530,7 @@
                 ENDDO
 
              CASE ( 8 )
+                !$ACC LOOP VECTOR
                 DO  k = nzb+1, nzt
                    !$ACC ATOMIC UPDATE
                    sums_wsss_ws_l(k,tn)  = sums_wsss_ws_l(k,tn) +                                  &
@@ -4518,6 +4544,7 @@
                 ENDDO
 
              CASE ( 9 )
+                !$ACC LOOP VECTOR
                 DO  k = nzb+1, nzt
                    !$ACC ATOMIC UPDATE
                    sums_salsa_ws_l(k,tn)  = sums_salsa_ws_l(k,tn) +                                &
@@ -4531,6 +4558,7 @@
                 ENDDO
 
              CASE ( 10 )
+                !$ACC LOOP VECTOR
                 DO  k = nzb+1, nzt
                    !$ACC ATOMIC UPDATE
                    sums_wsnis_ws_l(k,tn)  = sums_wsnis_ws_l(k,tn) +                                &
@@ -4544,6 +4572,7 @@
                 ENDDO
 
              CASE ( 11 )
+                !$ACC LOOP VECTOR
                 DO  k = nzb+1, nzt
                    !$ACC ATOMIC UPDATE
                    sums_wsqis_ws_l(k,tn)  = sums_wsqis_ws_l(k,tn) +                                &
@@ -4557,6 +4586,7 @@
                 ENDDO
 
              CASE ( 12 )
+                !$ACC LOOP VECTOR
                 DO  k = nzb+1, nzt
                    !$ACC ATOMIC UPDATE
                    sums_wsngs_ws_l(k,tn)  = sums_wsngs_ws_l(k,tn) +                                &
@@ -4570,6 +4600,7 @@
                 ENDDO
 
              CASE ( 13 )
+                !$ACC LOOP VECTOR
                 DO  k = nzb+1, nzt
                    !$ACC ATOMIC UPDATE
                    sums_wsqgs_ws_l(k,tn)  = sums_wsqgs_ws_l(k,tn) +                                &
@@ -4584,6 +4615,7 @@
                 ENDDO
 
              CASE ( 14 )
+                !$ACC LOOP VECTOR
                 DO  k = nzb+1, nzt
                    !$ACC ATOMIC UPDATE
                    sums_wsnss_ws_l(k,tn)  = sums_wsnss_ws_l(k,tn) +                                &
@@ -4597,6 +4629,7 @@
                 ENDDO
 
              CASE ( 15 )
+                !$ACC LOOP VECTOR
                 DO  k = nzb+1, nzt
                    !$ACC ATOMIC UPDATE
                    sums_wsqss_ws_l(k,tn)  = sums_wsqss_ws_l(k,tn) +                                &
