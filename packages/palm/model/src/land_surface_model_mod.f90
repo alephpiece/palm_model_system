@@ -4381,11 +4381,11 @@ END SUBROUTINE lsm_recompute_outgoing_radiation
 #if defined( PALM_SOIL_CONDUCTIVITY_MAPPING ) && defined( _OPENACC ) && ! defined( _OPENMP )
 !  Expose surface elements as well as soil layers to the accelerator.
        !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(2) DEFAULT(PRESENT) IF(enable_openacc)
-       DO k = nzb_soil, nzt_soil-1
-          DO m = 1, surf_lsm%ns
-          surf_lsm%lambda_h(k,m) = ( lambda_temp(m,k)   * dz_soil(k) +     &
-                                                 lambda_temp(m,k+1) * dz_soil(k+1) ) * &
-                                               0.5_wp * ddz_soil_center(k)
+       DO  k = nzb_soil, nzt_soil-1
+          DO  m = 1, surf_lsm%ns
+             surf_lsm%lambda_h(k,m) = ( lambda_temp(m,k)   * dz_soil(k) +                         &
+                                        lambda_temp(m,k+1) * dz_soil(k+1) ) *                     &
+                                      0.5_wp * ddz_soil_center(k)
           ENDDO
        ENDDO
        !$ACC END PARALLEL LOOP

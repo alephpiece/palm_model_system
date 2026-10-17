@@ -368,8 +368,8 @@
                 pw_part = MOD( (i-nxl)*(nyn-nys+1)+j-nys, pw_nparts ) + 1
 #endif
                 !$ACC ATOMIC
-                PRESSURE_MEAN(k) = PRESSURE_MEAN(k) + w(k,j,i) *                                                   &
-                           MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 3 ) )
+                PRESSURE_MEAN(k) = PRESSURE_MEAN(k) + w(k,j,i) *                                  &
+                                   MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 3 ) )
              ENDDO
           ENDDO
        ENDDO
