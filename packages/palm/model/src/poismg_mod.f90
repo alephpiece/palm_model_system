@@ -1016,7 +1016,8 @@
              imax = nxr_mg(l)
              jmax = nyn_mg(l)
 !
-!--          All four subsets update the same color and read only the opposite color.
+!--          The four subsets update disjoint points of the same color. Neighbour reads use
+!--          the opposite color; a masked neighbour may instead read the point itself.
 !--          Initialized index tables include the coarsest-level rank parity adjustment.
              !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(4) VECTOR_LENGTH(64) &
              !$ACC DEFAULT(PRESENT) &
