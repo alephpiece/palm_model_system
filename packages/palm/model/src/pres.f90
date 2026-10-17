@@ -23,6 +23,13 @@
 !> perturbation pressure. Compute the final velocities using this perturbation pressure. Compute the
 !> remaining divergence.
 !--------------------------------------------------------------------------------------------------!
+#if defined( PALM_PRESSURE_MEAN_SHARDS ) && defined( _OPENACC ) && ! defined( _OPENMP )
+#define PALM_PRESSURE_MEAN_SHARDS_ACTIVE
+#define PRESSURE_MEAN(k) pw_partial(k,pw_part)
+#else
+#define PRESSURE_MEAN(k) w_l_l(k)
+#endif
+
  SUBROUTINE pres
 
 #if defined( __parallel )
@@ -156,6 +163,13 @@
     REAL(wp), DIMENSION(:), ALLOCATABLE ::  w_l        !<
     REAL(wp), DIMENSION(:), ALLOCATABLE ::  w_l_l      !<
 
+
+#if defined( PALM_PRESSURE_MEAN_SHARDS_ACTIVE )
+    INTEGER(iwp), PARAMETER :: pw_nparts = 32
+    INTEGER(iwp) :: pw_part, pw_c
+    REAL(wp) :: pw_value
+    REAL(wp), ALLOCATABLE :: pw_partial(:,:)
+#endif
 
     CALL cpu_log( log_point(8), 'pres', 'start' )
 
@@ -324,22 +338,55 @@
 
        ALLOCATE( w_l(nzb:nzt), w_l_l(nzb:nzt) )
        !$ACC DATA CREATE(w_l,w_l_l) IF(enable_openacc)
+#if defined( PALM_PRESSURE_MEAN_SHARDS_ACTIVE )
+!  Spread horizontal contributions across a small set of profiles before MPI.
+       ALLOCATE( pw_partial(nzb:nzt,pw_nparts) )
+       !$ACC ENTER DATA CREATE(pw_partial) IF(enable_openacc)
+       !$ACC PARALLEL LOOP COLLAPSE(2) DEFAULT(PRESENT) IF(enable_openacc)
+       DO pw_c = 1, pw_nparts
+          DO k = nzb, nzt
+             pw_partial(k,pw_c) = 0.0_wp
+          ENDDO
+       ENDDO
+#endif
 
        !$ACC PARALLEL LOOP PRESENT( w_l, w_l_l ) IF(enable_openacc)
        DO  k = nzb, nzt
           w_l(k)   = 0.0_wp
           w_l_l(k) = 0.0_wp
        ENDDO
+#if defined( PALM_PRESSURE_MEAN_SHARDS_ACTIVE )
+       !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k, pw_part) &
+       !$ACC PRESENT(topo_flags, pw_partial, w) IF(enable_openacc)
+#else
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE( i, j, k) PRESENT( topo_flags, w_l_l, w ) IF(enable_openacc)
+#endif
        DO  i = nxl, nxr
           DO  j = nys, nyn
              DO  k = nzb, nzt
+#if defined( PALM_PRESSURE_MEAN_SHARDS_ACTIVE )
+                pw_part = MOD( (i-nxl)*(nyn-nys+1)+j-nys, pw_nparts ) + 1
+#endif
                 !$ACC ATOMIC
-                w_l_l(k) = w_l_l(k) + w(k,j,i) *                                                   &
+                PRESSURE_MEAN(k) = PRESSURE_MEAN(k) + w(k,j,i) *                                                   &
                            MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 3 ) )
              ENDDO
           ENDDO
        ENDDO
+
+#if defined( PALM_PRESSURE_MEAN_SHARDS_ACTIVE )
+       !$ACC PARALLEL LOOP PRIVATE(pw_c, pw_value) DEFAULT(PRESENT) IF(enable_openacc)
+       DO k = nzb, nzt
+          pw_value = 0.0_wp
+          !$ACC LOOP SEQ
+          DO pw_c = 1, pw_nparts
+             pw_value = pw_value + pw_partial(k,pw_c)
+          ENDDO
+          w_l_l(k) = pw_value
+       ENDDO
+       !$ACC EXIT DATA DELETE(pw_partial) IF(enable_openacc)
+       DEALLOCATE( pw_partial )
+#endif
 
 #if defined( __parallel )
        IF ( collective_wait )  CALL MPI_BARRIER( comm2d, ierr )

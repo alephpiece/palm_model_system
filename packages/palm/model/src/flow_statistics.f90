@@ -37,6 +37,10 @@
 !>       components are zero at the walls and inside buildings.
 !> @todo Revise output steering of land-surface and urban-surface output quantities
 !--------------------------------------------------------------------------------------------------!
+#if defined( PALM_FLOW_UVPT_SHARDS ) && defined( _OPENACC ) && ! defined( _OPENMP )
+#define PALM_FLOW_UVPT_SHARDS_ACTIVE
+#endif
+
 #if defined( PALM_FLOW_ENERGY_SHARDS ) && defined( _OPENACC ) && ! defined( _OPENMP )
 #define PALM_FLOW_ENERGY_SHARDS_ACTIVE
 #endif
@@ -309,6 +313,16 @@
 #define FS_HUMIDITY(k,slot,compact) sums_l(k,slot,tn)
 #endif
 
+#if defined( PALM_FLOW_UVPT_SHARDS_ACTIVE )
+    INTEGER, PARAMETER :: fu_nparts = 32
+    INTEGER :: fu_part, fu_a, fu_b, fu_c, fu_slot
+    REAL(wp) :: fu_value
+    REAL(wp), ALLOCATABLE :: fs_uvpt(:,:,:)
+#define FS_UVPT(k,slot,compact) fs_uvpt(k,compact,fu_part)
+#else
+#define FS_UVPT(k,slot,compact) sums_l(k,slot,tn)
+#endif
+
 #if defined( PALM_FLOW_ENERGY_SHARDS_ACTIVE )
     INTEGER, PARAMETER :: fe_nparts = 32
     INTEGER :: fe_part, fe_c
@@ -351,6 +365,11 @@
     ALLOCATE( fs_energy(fe_nparts) )
     !$ACC ENTER DATA CREATE(fs_energy) IF(enable_openacc)
 #endif
+#if defined( PALM_FLOW_UVPT_SHARDS_ACTIVE )
+    ALLOCATE( fs_uvpt(nzb:nzt+1,3,fu_nparts) )
+    !$ACC ENTER DATA CREATE(fs_uvpt) IF(enable_openacc)
+#endif
+
     DO  sr = 0, statistic_regions
 !
 !--    Initialize (local) summation array
@@ -456,21 +475,53 @@
        tn = 0
        !$OMP PARALLEL PRIVATE( i, j, k, tn, flag )
        !$ tn = omp_get_thread_num()
-       !$OMP DO
-       !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k, flag) DEFAULT(PRESENT) IF(enable_openacc)
-       DO  i = nxl, nxr
-          DO  j =  nys, nyn
-             DO  k = nzb, nzt+1
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 22 ) )
-                !$ACC ATOMIC UPDATE
-                sums_l(k,1,tn)  = sums_l(k,1,tn)  + u(k,j,i)  * rmask(j,i,sr) * flag
-                !$ACC ATOMIC UPDATE
-                sums_l(k,2,tn)  = sums_l(k,2,tn)  + v(k,j,i)  * rmask(j,i,sr) * flag
-                !$ACC ATOMIC UPDATE
-                sums_l(k,4,tn)  = sums_l(k,4,tn)  + pt(k,j,i) * rmask(j,i,sr) * flag
+#if defined( PALM_FLOW_UVPT_SHARDS_ACTIVE )
+!  Clear per region; all three means retain their original contribution mapping.
+       !$ACC PARALLEL LOOP COLLAPSE(3) DEFAULT(PRESENT) IF(enable_openacc)
+       DO fu_c = 1, fu_nparts
+          DO fu_b = 1, 3
+             DO fu_a = nzb, nzt+1
+                fs_uvpt(fu_a,fu_b,fu_c) = 0.0_wp
              ENDDO
           ENDDO
        ENDDO
+#endif
+       !$OMP DO
+#if defined( PALM_FLOW_UVPT_SHARDS_ACTIVE )
+       !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k, flag, fu_part) DEFAULT(PRESENT) IF(enable_openacc)
+#else
+       !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k, flag) DEFAULT(PRESENT) IF(enable_openacc)
+#endif
+       DO  i = nxl, nxr
+          DO  j =  nys, nyn
+             DO  k = nzb, nzt+1
+#if defined( PALM_FLOW_UVPT_SHARDS_ACTIVE )
+                fu_part = MOD( (i-nxl)*(nyn-nys+1)+j-nys, fu_nparts ) + 1
+#endif
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 22 ) )
+                !$ACC ATOMIC UPDATE
+                FS_UVPT(k,1,1)  = FS_UVPT(k,1,1)  + u(k,j,i)  * rmask(j,i,sr) * flag
+                !$ACC ATOMIC UPDATE
+                FS_UVPT(k,2,2)  = FS_UVPT(k,2,2)  + v(k,j,i)  * rmask(j,i,sr) * flag
+                !$ACC ATOMIC UPDATE
+                FS_UVPT(k,4,3)  = FS_UVPT(k,4,3)  + pt(k,j,i) * rmask(j,i,sr) * flag
+             ENDDO
+          ENDDO
+       ENDDO
+#if defined( PALM_FLOW_UVPT_SHARDS_ACTIVE )
+       !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(fu_value,fu_c,fu_slot) DEFAULT(PRESENT) IF(enable_openacc)
+       DO fu_b = 1, 3
+          DO fu_a = nzb, nzt+1
+             fu_value = 0.0_wp
+             !$ACC LOOP SEQ
+             DO fu_c = 1, fu_nparts
+                fu_value = fu_value + fs_uvpt(fu_a,fu_b,fu_c)
+             ENDDO
+             fu_slot = MERGE( fu_b, 4, fu_b < 3 )
+             sums_l(fu_a,fu_slot,tn) = sums_l(fu_a,fu_slot,tn) + fu_value
+          ENDDO
+       ENDDO
+#endif
 
 !
 !--    Horizontally averaged profiles of virtual potential temperature, total water content, water
@@ -2654,6 +2705,13 @@
 #endif
 #undef FS_FLUX
 #undef PALM_FLOW_FLUX_SHARDS_ACTIVE
+
+#if defined( PALM_FLOW_UVPT_SHARDS_ACTIVE )
+    !$ACC EXIT DATA DELETE(fs_uvpt) IF(enable_openacc)
+    DEALLOCATE( fs_uvpt )
+#endif
+#undef FS_UVPT
+#undef PALM_FLOW_UVPT_SHARDS_ACTIVE
 
 #if defined( PALM_FLOW_ENERGY_SHARDS_ACTIVE )
     !$ACC EXIT DATA DELETE(fs_energy) IF(enable_openacc)

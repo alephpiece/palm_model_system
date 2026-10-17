@@ -31,6 +31,20 @@
 !> @todo Check for random disturbances
 !> @note <Enter notes on the module>
 !--------------------------------------------------------------------------------------------------!
+#if defined( PALM_TCM_DIFFUSIVITY_ORGANIZATION ) && defined( _OPENACC ) && ! defined( _OPENMP )
+#define PALM_TCM_DIFFUSIVITY_ORGANIZATION_ACTIVE
+#define TCM_LES_STRATIFICATION(k) tcm_stratification
+#else
+#define TCM_LES_STRATIFICATION(k) ml_stratification(k)
+#endif
+
+#if defined( PALM_TKE_SHEAR_DIAGONAL ) && defined( _OPENACC ) && ! defined( _OPENMP )
+#define PALM_TKE_SHEAR_DIAGONAL_ACTIVE
+#define TKE_DIAG(name,k) name
+#else
+#define TKE_DIAG(name,k) name(k)
+#endif
+
  MODULE turbulence_closure_mod
 
 #if defined( __parallel )
@@ -2667,15 +2681,27 @@
     REAL(wp)     ::  wsus        !< momentum flux w"u"
     REAL(wp)     ::  wsvs        !< momentum flux w"v"
 
+#if defined( PALM_TKE_SHEAR_DIAGONAL_ACTIVE )
+    REAL(wp) :: dudx  !< diagonal gradient used immediately at one height
+#else
     REAL(wp), DIMENSION(nzb+1:nzt) ::  dudx      !< Gradient of u-component in x-direction
+#endif
     REAL(wp), DIMENSION(nzb+1:nzt) ::  dudy      !< Gradient of u-component in y-direction
     REAL(wp), DIMENSION(nzb+1:nzt) ::  dudz      !< Gradient of u-component in z-direction
     REAL(wp), DIMENSION(nzb+1:nzt) ::  dvdx      !< Gradient of v-component in x-direction
+#if defined( PALM_TKE_SHEAR_DIAGONAL_ACTIVE )
+    REAL(wp) :: dvdy  !< diagonal gradient used immediately at one height
+#else
     REAL(wp), DIMENSION(nzb+1:nzt) ::  dvdy      !< Gradient of v-component in y-direction
+#endif
     REAL(wp), DIMENSION(nzb+1:nzt) ::  dvdz      !< Gradient of v-component in z-direction
     REAL(wp), DIMENSION(nzb+1:nzt) ::  dwdx      !< Gradient of w-component in x-direction
     REAL(wp), DIMENSION(nzb+1:nzt) ::  dwdy      !< Gradient of w-component in y-direction
+#if defined( PALM_TKE_SHEAR_DIAGONAL_ACTIVE )
+    REAL(wp) :: dwdz  !< diagonal gradient used immediately at one height
+#else
     REAL(wp), DIMENSION(nzb+1:nzt) ::  dwdz      !< Gradient of w-component in z-direction
+#endif
     REAL(wp), DIMENSION(nzb+1:nzt) ::  tmp_flux  !< temporary flux-array in z-direction
 !-- Give the humidity branch its own flux-array symbol: flang-1.5 confuses the bound arguments of
 !-- PRIVATE arrays that are privatized in more than one OpenACC region of a subroutine.
@@ -2688,7 +2714,11 @@
 !-- surface-bounded grid points will be overwritten further below.
     !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i, j) &
     !$ACC PRIVATE(surf_s, surf_e) &
+#if defined( PALM_TKE_SHEAR_DIAGONAL_ACTIVE )
+    !$ACC PRIVATE(dudy(:), dudz(:), dvdx(:), dvdz(:), dwdx(:), dwdy(:)) &
+#else
     !$ACC PRIVATE(dudx(:), dudy(:), dudz(:), dvdx(:), dvdy(:), dvdz(:), dwdx(:), dwdy(:), dwdz(:)) &
+#endif
     !$ACC PRESENT(e, u, v, w, diss, dd2zu, ddzw, km, topo_flags) &
     !$ACC PRESENT(tend) &
     !$ACC PRESENT(surf_def) &
@@ -2700,17 +2730,23 @@
           !$ACC LOOP PRIVATE(k)
           DO  k = nzb+1, nzt
 
+#if ! defined( PALM_TKE_SHEAR_DIAGONAL_ACTIVE )
              dudx(k) =           ( u(k,j,i+1) - u(k,j,i)                                 ) * ddx
+#endif
              dudy(k) = 0.25_wp * ( u(k,j+1,i) + u(k,j+1,i+1) - u(k,j-1,i) - u(k,j-1,i+1) ) * ddy
              dudz(k) = 0.5_wp  * ( u(k+1,j,i) + u(k+1,j,i+1) - u(k-1,j,i) - u(k-1,j,i+1) ) * dd2zu(k)
 
              dvdx(k) = 0.25_wp * ( v(k,j,i+1) + v(k,j+1,i+1) - v(k,j,i-1) - v(k,j+1,i-1) ) * ddx
+#if ! defined( PALM_TKE_SHEAR_DIAGONAL_ACTIVE )
              dvdy(k) =           ( v(k,j+1,i) - v(k,j,i)                                 ) * ddy
+#endif
              dvdz(k) = 0.5_wp  * ( v(k+1,j,i) + v(k+1,j+1,i) - v(k-1,j,i) - v(k-1,j+1,i) ) * dd2zu(k)
 
              dwdx(k) = 0.25_wp * ( w(k,j,i+1) + w(k-1,j,i+1) - w(k,j,i-1) - w(k-1,j,i-1) ) * ddx
              dwdy(k) = 0.25_wp * ( w(k,j+1,i) + w(k-1,j+1,i) - w(k,j-1,i) - w(k-1,j-1,i) ) * ddy
+#if ! defined( PALM_TKE_SHEAR_DIAGONAL_ACTIVE )
              dwdz(k) =           ( w(k,j,i)   - w(k-1,j,i)                               ) * ddzw(k)
+#endif
 
           ENDDO
 
@@ -2907,10 +2943,19 @@
 
           ENDIF
 
+#if defined( PALM_TKE_SHEAR_DIAGONAL_ACTIVE )
+          !$ACC LOOP PRIVATE(k, def, flag, dudx, dvdy, dwdz)
+#else
           !$ACC LOOP PRIVATE(k, def, flag)
+#endif
           DO  k = nzb+1, nzt
+#if defined( PALM_TKE_SHEAR_DIAGONAL_ACTIVE )
+             dudx =           ( u(k,j,i+1) - u(k,j,i)                                 ) * ddx
+             dvdy =           ( v(k,j+1,i) - v(k,j,i)                                 ) * ddy
+             dwdz =           ( w(k,j,i)   - w(k-1,j,i)                               ) * ddzw(k)
+#endif
 
-             def = 2.0_wp * ( dudx(k)**2 + dvdy(k)**2 + dwdz(k)**2 ) +                             &
+             def = 2.0_wp * ( TKE_DIAG(dudx,k)**2 + TKE_DIAG(dvdy,k)**2 + TKE_DIAG(dwdz,k)**2 ) + &
                               dudy(k)**2 + dvdx(k)**2 + dwdx(k)**2 +                               &
                               dwdy(k)**2 + dudz(k)**2 + dvdz(k)**2 +                               &
                   2.0_wp * ( dvdx(k)*dudy(k) + dwdx(k)*dudz(k) + dwdy(k)*dvdz(k) )
@@ -4894,6 +4939,13 @@
 
     REAL(wp), DIMENSION(nzb:nzt+1,nysg:nyng,nxlg:nxrg), INTENT(IN) ::  var  !< temperature
 
+#if defined( PALM_TCM_DIFFUSIVITY_ORGANIZATION_ACTIVE )
+    INTEGER(iwp), PARAMETER :: tcm_nparts = 32
+    INTEGER(iwp) :: tcm_part, tcm_c
+    REAL(wp) :: tcm_stratification, tcm_value
+    REAL(wp), ALLOCATABLE :: tcm_partial(:,:,:)
+#endif
+
 !
 !-- Default thread number in case of one thread
     tn = 0
@@ -4912,14 +4964,36 @@
 !$  tn = omp_get_thread_num()
 
     IF ( les_default  .OR.  les_dynamic )  THEN
+#if defined( PALM_TCM_DIFFUSIVITY_ORGANIZATION_ACTIVE )
+!  Compute each level directly and spread profile contributions across columns.
+       ALLOCATE( tcm_partial(nzb+1:nzt,0:statistic_regions,tcm_nparts) )
+       !$ACC ENTER DATA CREATE(tcm_partial) IF(enable_openacc)
+       !$ACC PARALLEL LOOP COLLAPSE(3) DEFAULT(PRESENT) IF(enable_openacc)
+       DO tcm_c = 1, tcm_nparts
+          DO sr = 0, statistic_regions
+             DO k = nzb+1, nzt
+                tcm_partial(k,sr,tcm_c) = 0.0_wp
+             ENDDO
+          ENDDO
+       ENDDO
+
+       !$ACC PARALLEL LOOP GANG COLLAPSE(2) PRIVATE(tcm_part) &
+       !$ACC DEFAULT(PRESENT) IF(enable_openacc)
+#else
        !$OMP DO
        !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i, j) &
        !$ACC PRIVATE(dvar_dz, ml, ml_stratification, ml_local_profile) &
        !$ACC PRESENT(topo_flags, var, dd2zu, e, delta) &
        !$ACC PRESENT(kh, km, sums_l_l, rmask) IF(enable_openacc)
+#endif
        DO  i = nxl, nxr
           DO  j = nys, nyn
+#if defined( PALM_TCM_DIFFUSIVITY_ORGANIZATION_ACTIVE )
+             tcm_part = MOD( (i-nxl)*(nyn-nys+1)+j-nys, tcm_nparts ) + 1
+             !$ACC LOOP VECTOR PRIVATE(dvar_dz, tcm_stratification, ml, sr)
+#else
              !$ACC LOOP PRIVATE(k)
+#endif
              DO  k = nzb+1, nzt
 !
 !--             Determine the mixing length
@@ -4929,7 +5003,7 @@
                 dvar_dz = atmos_ocean_sign * ( var(k+1,j,i) - var(k-1,j,i) ) * dd2zu(k)
                 IF ( dvar_dz > 0.0_wp )  THEN
                    IF ( use_single_reference_value )  THEN
-                      ml_stratification(k) = 0.76_wp * SQRT( e(k,j,i) )                            &
+                      TCM_LES_STRATIFICATION(k) = 0.76_wp * SQRT( e(k,j,i) )                      &
 #if defined( __imuk_old )
                                              / SQRT( g / var_reference *                           &
                                              ( ABS( dvar_dz ) + 1.0E-10_wp ) ) + 1E-5_wp ! required for intel14
@@ -4937,7 +5011,7 @@
                                              / SQRT( g / var_reference * dvar_dz ) + 1E-5_wp
 #endif
                    ELSE
-                      ml_stratification(k) = 0.76_wp * SQRT( e(k,j,i) )                            &
+                      TCM_LES_STRATIFICATION(k) = 0.76_wp * SQRT( e(k,j,i) )                      &
 #if defined( __imuk_old )
                                              / SQRT( g / var(k,j,i) *                              &
                                              ( ABS( dvar_dz ) + 1.0E-10_wp ) ) + 1E-5_wp ! required for intel14
@@ -4946,24 +5020,36 @@
 #endif
                    ENDIF
                 ELSE
-                   ml_stratification(k) = delta(k,j,i)
+                   TCM_LES_STRATIFICATION(k) = delta(k,j,i)
                 ENDIF
 
+#if ! defined( PALM_TCM_DIFFUSIVITY_ORGANIZATION_ACTIVE )
              ENDDO
 
              !$ACC LOOP PRIVATE(k)
              !DIR$ IVDEP
              DO  k = nzb+1, nzt
+#endif
 
-                ml = MIN( delta(k,j,i), ml_stratification(k) )                                     &
+                ml = MIN( delta(k,j,i), TCM_LES_STRATIFICATION(k) )                               &
                    * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+#if ! defined( PALM_TCM_DIFFUSIVITY_ORGANIZATION_ACTIVE )
                 ml_local_profile(k) = ml
+#endif
 !
 !--             Compute diffusion coefficients for momentum and heat
                 km(k,j,i) = c_0 * ml * SQRT( e(k,j,i) )
                 kh(k,j,i) = ( 1.0_wp + 2.0_wp * ml / delta(k,j,i) ) * km(k,j,i)
 
+#if defined( PALM_TCM_DIFFUSIVITY_ORGANIZATION_ACTIVE )
+                !$ACC LOOP SEQ
+                DO sr = 0, statistic_regions
+                   !$ACC ATOMIC UPDATE
+                   tcm_partial(k,sr,tcm_part) = tcm_partial(k,sr,tcm_part) + ml * rmask(j,i,sr)
+                ENDDO
+#endif
              ENDDO
+#if ! defined( PALM_TCM_DIFFUSIVITY_ORGANIZATION_ACTIVE )
 !
 !--          Summation for averaged profile (cf. flow_statistics)
              !$ACC LOOP PRIVATE(sr, k)
@@ -4974,8 +5060,25 @@
                 ENDDO
              ENDDO
 
+#endif
+
           ENDDO
        ENDDO
+#if defined( PALM_TCM_DIFFUSIVITY_ORGANIZATION_ACTIVE )
+       !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(tcm_value,tcm_c) DEFAULT(PRESENT) IF(enable_openacc)
+       DO sr = 0, statistic_regions
+          DO k = nzb+1, nzt
+             tcm_value = 0.0_wp
+             !$ACC LOOP SEQ
+             DO tcm_c = 1, tcm_nparts
+                tcm_value = tcm_value + tcm_partial(k,sr,tcm_c)
+             ENDDO
+             sums_l_l(k,sr,tn) = sums_l_l(k,sr,tn) + tcm_value
+          ENDDO
+       ENDDO
+       !$ACC EXIT DATA DELETE(tcm_partial) IF(enable_openacc)
+       DEALLOCATE( tcm_partial )
+#endif
 
     ELSEIF ( les_dai )  THEN
        !$OMP DO
