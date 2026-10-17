@@ -338,22 +338,12 @@
              bufsize = ( nzt - nzb + 2 ) * ( nxr - nxl + 1 ) * nbgp_local
 
 !
-!--          Pack data for sending south boundary.
+!--          Pack south and north boundaries into independent buffers.
              !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
              DO  i = nxl, nxr
                 DO  j = 1, nbgp_local
                    DO  k = nzb, nzt+1
                       sendbuf1(k,i,j) = ar(k,nys+j-1,i)
-                   ENDDO
-                ENDDO
-             ENDDO
-             !$ACC END PARALLEL LOOP
-!
-!--          Pack data for sending north boundary.
-             !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
-             DO  i = nxl, nxr
-                DO  j = 1, nbgp_local
-                   DO  k = nzb, nzt+1
                       sendbuf2(k,i,j) = ar(k,nyn-nbgp_local+j,i)
                    ENDDO
                 ENDDO
@@ -384,22 +374,12 @@
 
              CALL MPI_WAITALL( 4, req, wait_stat, ierr )
 !
-!--          Unpack received north boundary data
+!--          Unpack north and south boundaries into disjoint ghost layers.
              !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
              DO  i = nxl, nxr
                 DO  j = 1, nbgp_local
                    DO  k = nzb, nzt+1
                       ar(k,nyn+j,i) = recvbuf1(k,i,j)
-                   ENDDO
-                ENDDO
-             ENDDO
-             !$ACC END PARALLEL LOOP
-!
-!--          Unpack received south boundary data
-             !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
-             DO  i = nxl, nxr
-                DO  j = 1, nbgp_local
-                   DO  k = nzb, nzt+1
                       ar(k,nys-nbgp_local-1+j,i) = recvbuf2(k,i,j)
                    ENDDO
                 ENDDO
