@@ -103,6 +103,9 @@
 !--    u-component
        CASE ( 1 )
           !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k, flag) &
+#if defined( PALM_EQUATION_VECTOR64 )
+          !$ACC VECTOR_LENGTH(64) &
+#endif
           !$ACC PRESENT(topo_flags) &
           !$ACC PRESENT(v, w, vg) &
           !$ACC PRESENT(tend) IF(enable_openacc)
@@ -127,6 +130,9 @@
 !--    v-component
        CASE ( 2 )
           !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k, flag) &
+#if defined( PALM_EQUATION_VECTOR64 )
+          !$ACC VECTOR_LENGTH(64) &
+#endif
           !$ACC PRESENT(topo_flags) &
           !$ACC PRESENT(u, w, ug) &
           !$ACC PRESENT(tend) IF(enable_openacc)
@@ -151,6 +157,9 @@
 !--    w-component
        CASE ( 3 )
           !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k, flag) &
+#if defined( PALM_EQUATION_VECTOR64 )
+          !$ACC VECTOR_LENGTH(64) &
+#endif
           !$ACC PRESENT(topo_flags) &
           !$ACC PRESENT(u, v) &
           !$ACC PRESENT(tend) IF(enable_openacc)

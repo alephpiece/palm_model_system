@@ -2270,7 +2270,11 @@
              tend = 0.0_wp
              CALL advec_s_up( e )
           ELSE
-             !$ACC KERNELS PRESENT(tend) IF(enable_openacc)
+             !$ACC KERNELS &
+#if defined( PALM_EQUATION_VECTOR64 )
+             !$ACC VECTOR_LENGTH(64) &
+#endif
+             !$ACC PRESENT(tend) IF(enable_openacc)
              tend = 0.0_wp
              !$ACC END KERNELS
              IF ( timestep_scheme(1:5) == 'runge' )  THEN

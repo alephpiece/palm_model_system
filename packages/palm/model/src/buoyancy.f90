@@ -90,6 +90,9 @@
 !
 !--       Normal case: horizontal surface
           !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
+#if defined( PALM_EQUATION_VECTOR64 )
+          !$ACC VECTOR_LENGTH(64) &
+#endif
           !$ACC PRESENT(var) &
           !$ACC PRESENT(ref_state) &
           !$ACC PRESENT(tend) IF(enable_openacc)

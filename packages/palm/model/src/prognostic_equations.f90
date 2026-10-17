@@ -853,7 +853,11 @@
 !-- u-velocity component
     CALL cpu_log( log_point(5), 'u-equation', 'start' )
 
-    !$ACC KERNELS PRESENT(tend) IF(enable_openacc)
+    !$ACC KERNELS &
+#if defined( PALM_EQUATION_VECTOR64 )
+    !$ACC VECTOR_LENGTH(64) &
+#endif
+    !$ACC PRESENT(tend) IF(enable_openacc)
     tend = 0.0_wp
     !$ACC END KERNELS
     IF ( timestep_scheme(1:5) == 'runge' )  THEN
@@ -984,7 +988,11 @@
 !-- v-velocity component
     CALL cpu_log( log_point(6), 'v-equation', 'start' )
 
-    !$ACC KERNELS PRESENT(tend) IF(enable_openacc)
+    !$ACC KERNELS &
+#if defined( PALM_EQUATION_VECTOR64 )
+    !$ACC VECTOR_LENGTH(64) &
+#endif
+    !$ACC PRESENT(tend) IF(enable_openacc)
     tend = 0.0_wp
     !$ACC END KERNELS
     IF ( timestep_scheme(1:5) == 'runge' )  THEN
@@ -1112,7 +1120,11 @@
 !-- w-velocity component
     CALL cpu_log( log_point(7), 'w-equation', 'start' )
 
-    !$ACC KERNELS PRESENT(tend) IF(enable_openacc)
+    !$ACC KERNELS &
+#if defined( PALM_EQUATION_VECTOR64 )
+    !$ACC VECTOR_LENGTH(64) &
+#endif
+    !$ACC PRESENT(tend) IF(enable_openacc)
     tend = 0.0_wp
     !$ACC END KERNELS
     IF ( timestep_scheme(1:5) == 'runge' )  THEN
@@ -1234,7 +1246,11 @@
 !
 !--    pt-tendency terms with no communication
        IF ( scalar_advec /= 'bc-scheme' )  THEN
-          !$ACC KERNELS PRESENT(tend) IF(enable_openacc)
+          !$ACC KERNELS &
+#if defined( PALM_EQUATION_VECTOR64 )
+          !$ACC VECTOR_LENGTH(64) &
+#endif
+          !$ACC PRESENT(tend) IF(enable_openacc)
           tend = 0.0_wp
           !$ACC END KERNELS
           IF ( timestep_scheme(1:5) == 'runge' )  THEN
@@ -1382,7 +1398,11 @@
 !
 !--    Scalar/q-tendency terms with no communication
        IF ( scalar_advec /= 'bc-scheme' )  THEN
-          !$ACC KERNELS PRESENT(tend) IF(enable_openacc)
+          !$ACC KERNELS &
+#if defined( PALM_EQUATION_VECTOR64 )
+          !$ACC VECTOR_LENGTH(64) &
+#endif
+          !$ACC PRESENT(tend) IF(enable_openacc)
           tend = 0.0_wp
           !$ACC END KERNELS
           IF ( timestep_scheme(1:5) == 'runge' )  THEN
@@ -1440,7 +1460,14 @@
 
 !
 !--    Prognostic equation for total water content
+#if defined( PALM_Q_UPDATE_COLLAPSE3 )
+       !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) &
+#else
        !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(2) &
+#endif
+#if defined( PALM_EQUATION_VECTOR64 )
+       !$ACC VECTOR_LENGTH(64) &
+#endif
        !$ACC PRESENT(q, q_init, q_p, rdf_sc, tend, topo_flags, tq_m, tsc(3:5)) &
        !$ACC IF(enable_openacc)
        DO  i = nxl, nxr
