@@ -92,7 +92,9 @@
     REAL(wp), DIMENSION(:), ALLOCATABLE, SAVE ::  trigs_x  !<
     REAL(wp), DIMENSION(:), ALLOCATABLE, SAVE ::  trigs_y  !<
 
-#if defined( __cuda_fft )
+#if defined( __hip_fft )
+    TYPE(C_PTR), SAVE :: plan_xf, plan_xi, plan_yf, plan_yi
+#elif defined( __cuda_fft )
     INTEGER(C_INT), SAVE ::  plan_xf  !<
     INTEGER(C_INT), SAVE ::  plan_xi  !<
     INTEGER(C_INT), SAVE ::  plan_yf  !<
