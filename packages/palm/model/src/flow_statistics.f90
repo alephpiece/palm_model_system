@@ -37,6 +37,10 @@
 !>       components are zero at the walls and inside buildings.
 !> @todo Revise output steering of land-surface and urban-surface output quantities
 !--------------------------------------------------------------------------------------------------!
+#if defined( PALM_FLOW_ENERGY_SHARDS ) && defined( _OPENACC ) && ! defined( _OPENMP )
+#define PALM_FLOW_ENERGY_SHARDS_ACTIVE
+#endif
+
  SUBROUTINE flow_statistics
 
 #if defined( __parallel )
@@ -305,6 +309,16 @@
 #define FS_HUMIDITY(k,slot,compact) sums_l(k,slot,tn)
 #endif
 
+#if defined( PALM_FLOW_ENERGY_SHARDS_ACTIVE )
+    INTEGER, PARAMETER :: fe_nparts = 32
+    INTEGER :: fe_part, fe_c
+    REAL(wp) :: fe_value
+    REAL(wp), ALLOCATABLE :: fs_energy(:)
+#define FS_ENERGY fs_energy(fe_part)
+#else
+#define FS_ENERGY sums_l(nzb+5,pr_palm,tn)
+#endif
+
     CALL cpu_log( log_point(10), 'flow_statistics', 'start' )
 
 
@@ -332,6 +346,10 @@
 #if defined( PALM_FLOW_HUMIDITY_SHARDS_ACTIVE )
     ALLOCATE( fs_humidity(nzb:nzt+1,2,fh_nparts) )
     !$ACC ENTER DATA CREATE(fs_humidity) IF(enable_openacc)
+#endif
+#if defined( PALM_FLOW_ENERGY_SHARDS_ACTIVE )
+    ALLOCATE( fs_energy(fe_nparts) )
+    !$ACC ENTER DATA CREATE(fs_energy) IF(enable_openacc)
 #endif
     DO  sr = 0, statistic_regions
 !
@@ -1017,15 +1035,28 @@
 !--    energy is larger (even if only slightly) than the total kinetic energy, calculation is based
 !--    on deviations from the horizontal mean, instead of spatial descretization of the advection
 !--    term.
+#if defined( PALM_FLOW_ENERGY_SHARDS_ACTIVE )
+!  Clear the scalar partial sums for this statistical region.
+       !$ACC PARALLEL LOOP DEFAULT(PRESENT) IF(enable_openacc)
+       DO fe_c = 1, fe_nparts
+          fs_energy(fe_c) = 0.0_wp
+       ENDDO
+#endif
        !$OMP DO
 #if defined( PALM_FLOW_ENERGY_MAPPING ) && defined( _OPENACC ) && ! defined( _OPENMP )
        !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(2) PRIVATE(flag, sums_l_epert, ust2, vst2, w2) &
 #else
        !$ACC PARALLEL LOOP GANG VECTOR PRIVATE(flag, sums_l_epert, ust2, vst2, w2) &
 #endif
+#if defined( PALM_FLOW_ENERGY_SHARDS_ACTIVE )
+       !$ACC PRIVATE(fe_part) &
+#endif
        !$ACC DEFAULT(PRESENT) IF(enable_openacc)
        DO  i = nxl, nxr
           DO  j =  nys, nyn
+#if defined( PALM_FLOW_ENERGY_SHARDS_ACTIVE )
+             fe_part = MOD((i-nxl)*(nyn-nys+1)+j-nys,fe_nparts)+1
+#endif
              sums_l_epert = 0.0_wp
              DO  k = nzb, nzt+1
                 flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 22 ) )
@@ -1040,10 +1071,20 @@
 
              ENDDO
              !$ACC ATOMIC UPDATE
-             sums_l(nzb+5,pr_palm,tn) = sums_l(nzb+5,pr_palm,tn) + sums_l_epert
+             FS_ENERGY = FS_ENERGY + sums_l_epert
           ENDDO
        ENDDO
        !$ACC END PARALLEL LOOP
+#if defined( PALM_FLOW_ENERGY_SHARDS_ACTIVE )
+       !$ACC SERIAL DEFAULT(PRESENT) PRIVATE(fe_c,fe_value) IF(enable_openacc)
+       fe_value = 0.0_wp
+       !$ACC LOOP SEQ
+       DO fe_c = 1, fe_nparts
+          fe_value = fe_value + fs_energy(fe_c)
+       ENDDO
+       sums_l(nzb+5,pr_palm,tn) = sums_l(nzb+5,pr_palm,tn) + fe_value
+       !$ACC END SERIAL
+#endif
 
 !
 !--    Horizontally averaged profiles of the vertical fluxes
@@ -2613,6 +2654,13 @@
 #endif
 #undef FS_FLUX
 #undef PALM_FLOW_FLUX_SHARDS_ACTIVE
+
+#if defined( PALM_FLOW_ENERGY_SHARDS_ACTIVE )
+    !$ACC EXIT DATA DELETE(fs_energy) IF(enable_openacc)
+    DEALLOCATE( fs_energy )
+#endif
+#undef FS_ENERGY
+#undef PALM_FLOW_ENERGY_SHARDS_ACTIVE
 
     CALL cpu_log( log_point(10), 'flow_statistics', 'stop' )
 
