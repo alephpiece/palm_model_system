@@ -1018,7 +1018,11 @@
 !--    on deviations from the horizontal mean, instead of spatial descretization of the advection
 !--    term.
        !$OMP DO
+#if defined( PALM_FLOW_ENERGY_MAPPING ) && defined( _OPENACC ) && ! defined( _OPENMP )
+       !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(2) PRIVATE(flag, sums_l_epert, ust2, vst2, w2) &
+#else
        !$ACC PARALLEL LOOP GANG VECTOR PRIVATE(flag, sums_l_epert, ust2, vst2, w2) &
+#endif
        !$ACC DEFAULT(PRESENT) IF(enable_openacc)
        DO  i = nxl, nxr
           DO  j =  nys, nyn
