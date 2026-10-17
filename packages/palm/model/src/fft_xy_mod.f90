@@ -916,7 +916,7 @@
              !$ACC END HOST_DATA
 
              !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i,j,k) &
-             !$ACC PRESENT(ar, ar_tmp) DEFAULT(NONE) IF(enable_openacc)
+             !$ACC PRESENT(ar, ar_tmp) IF(enable_openacc)
              DO  k = nzb_x, nzt_x
                 DO  j = nys_x, nyn_x
 
@@ -934,7 +934,7 @@
           ELSE
 
              !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i,j,k) &
-             !$ACC PRESENT(ar, ar_tmp) DEFAULT(NONE) IF(enable_openacc)
+             !$ACC PRESENT(ar, ar_tmp) IF(enable_openacc)
              DO  k = nzb_x, nzt_x
                 DO  j = nys_x, nyn_x
 
@@ -1736,7 +1736,7 @@
              !$ACC END HOST_DATA
 
              !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i,j,k) &
-             !$ACC PRESENT(ar, ar_tmp) DEFAULT(NONE) IF(enable_openacc)
+             !$ACC PRESENT(ar, ar_tmp) IF(enable_openacc)
              DO  k = nzb_y, nzt_y
                 DO  i = nxl_y, nxr_y
 
@@ -1754,7 +1754,7 @@
           ELSE
 
              !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i,j,k) &
-             !$ACC PRESENT(ar, ar_tmp) DEFAULT(NONE) IF(enable_openacc)
+             !$ACC PRESENT(ar, ar_tmp) IF(enable_openacc)
              DO  k = nzb_y, nzt_y
                 DO  i = nxl_y, nxr_y
 

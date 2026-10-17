@@ -299,7 +299,7 @@
 !
 !-- Forward substitution
 #if defined( __cuda_fft )
-    !$ACC PARALLEL PRESENT(ar, ar1, tri) PRIVATE(i,j,k) DEFAULT(NONE) IF(enable_openacc)
+    !$ACC PARALLEL PRESENT(ar, ar1, tri) PRIVATE(i,j,k) IF(enable_openacc)
     !$ACC LOOP COLLAPSE(2)
 #endif
 !
@@ -332,7 +332,7 @@
 !-- Note, the 1.0E-20 in the denominator is due to avoid divisions by zero appearing if the
 !-- pressure bc is set to neumann at the top of the model domain.
 #if defined( __cuda_fft )
-    !$ACC PARALLEL PRESENT(ar, ar1, ddzuw, tri) PRIVATE(i,j,k) DEFAULT(NONE) IF(enable_openacc)
+    !$ACC PARALLEL PRESENT(ar, ar1, ddzuw, tri) PRIVATE(i,j,k) IF(enable_openacc)
     !$ACC LOOP COLLAPSE(2)
 #endif
 !

@@ -211,7 +211,7 @@
        !$OMP  DO
 #if defined( __cuda_fft )
        !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i,j,k,ii,l) &
-       !$ACC PRESENT(f_inv, f_in) PRESENT(nxl_y_pe, nxr_y_pe) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(f_inv, f_in) PRESENT(nxl_y_pe, nxr_y_pe) IF(enable_openacc)
 #endif
        DO  k = nzb_x, nzt_x
           DO  j = nys_x, nyn_x
@@ -232,7 +232,7 @@
        !$OMP  DO
 #if defined( __cuda_fft )
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i,j,k) &
-       !$ACC PRESENT(f_inv, f_in) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(f_inv, f_in) IF(enable_openacc)
 #endif
        DO  k = nzb_x, nzt_x
           DO  j = nys_x, nyn_x
@@ -326,7 +326,7 @@
           !$OMP  PARALLEL PRIVATE ( i, j, k, l, jj )
 #if defined( __cuda_fft )
           !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i,j,k,jj) &
-          !$ACC PRESENT(f_out, work) PRESENT(nny_pe) DEFAULT(NONE) IF(enable_openacc)
+          !$ACC PRESENT(f_out, work) PRESENT(nny_pe) IF(enable_openacc)
 #endif
           !$OMP DO
           DO  i = nxl_y, nxr_y
@@ -374,7 +374,7 @@
        !$OMP  DO
 #if defined( __cuda_fft )
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i,j,k) &
-       !$ACC PRESENT(f_out, f_inv) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(f_out, f_inv) IF(enable_openacc)
 #endif
        DO  k = nzb_y, nzt_y
           DO  i = nxl_y, nxr_y
@@ -438,7 +438,7 @@
        !$OMP DO
 #if defined( __cuda_fft )
        !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i,j,k) &
-       !$ACC PRESENT(f_out, f_inv) PRESENT(nzb_x_pe, nzt_x_pe) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(f_out, f_inv) PRESENT(nzb_x_pe, nzt_x_pe) IF(enable_openacc)
 #endif
        DO  i = nxl, nxr
           DO  j = nys, nyn
@@ -459,7 +459,7 @@
        !$OMP  DO
 #if defined( __cuda_fft )
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i,j,k) &
-       !$ACC PRESENT(f_out, f_inv) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(f_out, f_inv) IF(enable_openacc)
 #endif
        DO  i = nxl, nxr
           DO  j = nys, nyn
@@ -581,7 +581,7 @@
              xs = 0 + l * nnx
 #if defined( __cuda_fft )
              !$ACC PARALLEL LOOP PRIVATE(i,j,k,ii) &
-             !$ACC PRESENT(work, f_in) PRESENT(nxr_pe, nxl_pe) DEFAULT(NONE) IF(enable_openacc)
+             !$ACC PRESENT(work, f_in) PRESENT(nxr_pe, nxl_pe) IF(enable_openacc)
 #endif
              !$OMP DO
              DO  k = nzb_x, nzt_x
@@ -632,7 +632,7 @@
        !$OMP DO
 #if defined( __cuda_fft )
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i,j,k) &
-       !$ACC PRESENT(f_inv, f_in) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(f_inv, f_in) IF(enable_openacc)
 #endif
        DO  i = nxl, nxr
           DO  j = nys, nyn
@@ -692,7 +692,7 @@
        !$OMP  DO
 #if defined( __cuda_fft )
        !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i,j,k,ii,l) &
-       !$ACC PRESENT(f_inv, f_out) PRESENT(nxl_y_pe, nxr_y_pe) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(f_inv, f_out) PRESENT(nxl_y_pe, nxr_y_pe) IF(enable_openacc)
 #endif
        DO  k = nzb_x, nzt_x
           DO  j = nys_x, nyn_x
@@ -713,7 +713,7 @@
        !$OMP DO
 #if defined( __cuda_fft )
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i,j,k) &
-       !$ACC PRESENT(f_out, f_inv) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(f_out, f_inv) IF(enable_openacc)
 #endif
        DO  k = nzb_x, nzt_x
           DO  j = nys_x, nyn_x
@@ -791,7 +791,7 @@
           !$OMP PARALLEL PRIVATE ( i, j, k, l, jj)
 #if defined( __cuda_fft )
           !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i,j,k,l,jj) &
-          !$ACC PRESENT(work, f_in) PRESENT(nny_pe) DEFAULT(NONE) IF(enable_openacc)
+          !$ACC PRESENT(work, f_in) PRESENT(nny_pe) IF(enable_openacc)
 #endif
           !$OMP DO
           DO  i = nxl_y, nxr_y
@@ -857,7 +857,7 @@
        !$OMP DO
 #if defined( __cuda_fft )
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i,j,k) &
-       !$ACC PRESENT(f_inv, f_in) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(f_inv, f_in) IF(enable_openacc)
 #endif
        DO  i = nxl_y, nxr_y
           DO  k = nzb_y, nzt_y
@@ -914,7 +914,7 @@
     !$OMP DO
 #if defined( __cuda_fft )
     !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i,j,k,l,jj) &
-    !$ACC PRESENT(f_inv, f_in) PRESENT(nyn_z_pe, nys_z_pe) DEFAULT(NONE) IF(enable_openacc)
+    !$ACC PRESENT(f_inv, f_in) PRESENT(nyn_z_pe, nys_z_pe) IF(enable_openacc)
 #endif
     DO  k = nzb_y, nzt_y
        DO  i = nxl_y, nxr_y
@@ -996,7 +996,7 @@
        !$OMP DO
 #if defined( __cuda_fft )
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i,j,k) &
-       !$ACC PRESENT(f_out, f_inv) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(f_out, f_inv) IF(enable_openacc)
 #endif
        DO  j = 0, ny
           DO  k = nzb_y, nzt_y
@@ -1034,7 +1034,7 @@
           !$OMP PARALLEL PRIVATE ( i, j, k, l, kk )
 #if defined( __cuda_fft )
           !$ACC PARALLEL LOOP PRIVATE(i,j,k,l,kk) &
-          !$ACC PRESENT(f_out, work) PRESENT(nzb_x_pe, nzt_x_pe) DEFAULT(NONE) IF(enable_openacc)
+          !$ACC PRESENT(f_out, work) PRESENT(nzb_x_pe, nzt_x_pe) IF(enable_openacc)
 #endif
           !$OMP DO
           DO  j = nys_z, nyn_z
@@ -1126,7 +1126,7 @@
        !$OMP DO
 #if defined( __cuda_fft )
        !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i,j,k,kk,l)   &
-       !$ACC PRESENT(f_in, f_inv) PRESENT(nzb_x_pe, nzt_x_pe) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(f_in, f_inv) PRESENT(nzb_x_pe, nzt_x_pe) IF(enable_openacc)
 #endif
        DO  i = nxl, nxr
           DO  j = nys, nyn
@@ -1147,7 +1147,7 @@
        !$OMP DO
 #if defined( __cuda_fft )
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i,j,k) &
-       !$ACC PRESENT(f_in, f_inv) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(f_in, f_inv) IF(enable_openacc)
 #endif
        DO  i = nxl, nxr
           DO  j = nys, nyn
@@ -1204,7 +1204,7 @@
     !$OMP DO
 #if defined( __cuda_fft )
     !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i,j,k,kk,l)   &
-    !$ACC PRESENT(f_in, f_inv) PRESENT(nzb_x_pe_diffnz, nzt_x_pe_diffnz) DEFAULT(NONE) IF(enable_openacc)
+    !$ACC PRESENT(f_in, f_inv) PRESENT(nzb_x_pe_diffnz, nzt_x_pe_diffnz) IF(enable_openacc)
 #endif
     DO  i = nxl, nxr
        DO  j = nys, nyn
@@ -1298,7 +1298,7 @@
        !$OMP DO
 #if defined( __cuda_fft )
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i,j,k) &
-       !$ACC PRESENT(f_out, f_inv) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(f_out, f_inv) IF(enable_openacc)
 #endif
        DO  k = 1, nz
           DO  i = nxl, nxr
@@ -1371,7 +1371,7 @@
              xs = 0 + l * nnx
 #if defined( __cuda_fft )
              !$ACC PARALLEL LOOP PRIVATE(i,j,k,ii) &
-             !$ACC PRESENT(f_out, work) PRESENT(nxr_pe, nxl_pe) DEFAULT(NONE) IF(enable_openacc)
+             !$ACC PRESENT(f_out, work) PRESENT(nxr_pe, nxl_pe) IF(enable_openacc)
 #endif
              !$OMP DO
              DO  k = nzb_x, nzt_x
@@ -1499,7 +1499,7 @@
        xs = 0 + l * nnx
 #if defined( __cuda_fft )
        !$ACC PARALLEL LOOP PRIVATE(i,j,k,ii) &
-       !$ACC PRESENT(f_out, work) PRESENT(nxr_pe, nxl_pe) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(f_out, work) PRESENT(nxr_pe, nxl_pe) IF(enable_openacc)
 #endif
        !$OMP DO
        DO  k = nzb_x_diffnz, nzt_x_diffnz
@@ -1638,7 +1638,7 @@
     !$OMP DO
 #if defined( __cuda_fft )
     !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i,j,k,l,jj) &
-    !$ACC PRESENT(f_out, f_inv) PRESENT(nyn_z_pe, nys_z_pe) DEFAULT(NONE) IF(enable_openacc)
+    !$ACC PRESENT(f_out, f_inv) PRESENT(nyn_z_pe, nys_z_pe) IF(enable_openacc)
 #endif
     DO  k = nzb_y, nzt_y
        DO  i = nxl_y, nxr_y
@@ -1724,7 +1724,7 @@
           !$OMP PARALLEL PRIVATE ( i, j, k, l, kk )
 #if defined( __cuda_fft )
           !$ACC PARALLEL LOOP PRIVATE(i,j,k,l,kk) &
-          !$ACC PRESENT(f_in, work) PRESENT(nzb_x_pe, nzt_x_pe) DEFAULT(NONE) IF(enable_openacc)
+          !$ACC PRESENT(f_in, work) PRESENT(nzb_x_pe, nzt_x_pe) IF(enable_openacc)
 #endif
           !$OMP DO
           DO  j = nys_z, nyn_z
@@ -1788,7 +1788,7 @@
        !$OMP DO
 #if defined( __cuda_fft )
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i,j,k) &
-       !$ACC PRESENT(f_inv, f_in) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(f_inv, f_in) IF(enable_openacc)
 #endif
        DO  k = nzb_y, nzt_y
           DO  j = 0, ny
