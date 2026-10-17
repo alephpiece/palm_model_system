@@ -327,7 +327,8 @@
           CALL resid( d, p_loc, r, interior_only=.TRUE. )
 
           maxerror = 0.0_wp
-          !$ACC PARALLEL LOOP DEFAULT(PRESENT) REDUCTION(+:maxerror) IF(enable_openacc)
+          !$ACC PARALLEL LOOP COLLAPSE(3) VECTOR_LENGTH(64) &
+          !$ACC DEFAULT(PRESENT) REDUCTION(+:maxerror) IF(enable_openacc)
           DO  i = nxl, nxr
              DO  j = nys, nyn
                 DO  k = nzb+1, nzt
