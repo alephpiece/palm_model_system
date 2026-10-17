@@ -2321,6 +2321,9 @@
 !--    Eliminate negative TKE values, which can occur due to numerical reasons in the course of the
 !--    integration. In such cases the old TKE value is reduced by 90%.
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
+#if defined( PALM_EQUATION_VECTOR64 )
+       !$ACC VECTOR_LENGTH(64) &
+#endif
        !$ACC PRESENT(e, tend, te_m, topo_flags) &
        !$ACC PRESENT(tsc(3:3)) &
        !$ACC PRESENT(e_p) IF(enable_openacc)
@@ -2341,6 +2344,9 @@
        IF ( timestep_scheme(1:5) == 'runge' )  THEN
           IF ( intermediate_timestep_count == 1 )  THEN
              !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
+#if defined( PALM_EQUATION_VECTOR64 )
+             !$ACC VECTOR_LENGTH(64) &
+#endif
              !$ACC PRESENT(tend, te_m) IF(enable_openacc)
              DO  i = nxl, nxr
                 DO  j = nys, nyn
@@ -2351,6 +2357,9 @@
              ENDDO
           ELSEIF ( intermediate_timestep_count < intermediate_timestep_count_max )  THEN
              !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
+#if defined( PALM_EQUATION_VECTOR64 )
+             !$ACC VECTOR_LENGTH(64) &
+#endif
              !$ACC PRESENT(tend, te_m) IF(enable_openacc)
              DO  i = nxl, nxr
                 DO  j = nys, nyn
@@ -2713,6 +2722,9 @@
 !-- Calculate TKE production by shear. Calculate gradients at all grid points first, gradients at
 !-- surface-bounded grid points will be overwritten further below.
     !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i, j) &
+#if defined( PALM_TKE_SHEAR_VECTOR64 )
+    !$ACC VECTOR_LENGTH(64) &
+#endif
     !$ACC PRIVATE(surf_s, surf_e) &
 #if defined( PALM_TKE_SHEAR_DIAGONAL_ACTIVE )
     !$ACC PRIVATE(dudy(:), dudz(:), dvdx(:), dvdz(:), dwdx(:), dwdy(:)) &
@@ -4271,6 +4283,9 @@
     ENDIF
 
     !$ACC PARALLEL LOOP COLLAPSE(3) &
+#if defined( PALM_EQUATION_VECTOR64 )
+    !$ACC VECTOR_LENGTH(64) &
+#endif
     !$ACC PRIVATE(i, j, k, mask_bottom, mask_left, mask_north, mask_right, mask_south, mask_top) &
     !$ACC PRESENT(diss, e, km, tend, topo_flags) &
     !$ACC PRESENT(ddzu, ddzw, rho_air_zw, drho_air) IF(enable_openacc)

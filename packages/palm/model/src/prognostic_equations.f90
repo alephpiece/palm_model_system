@@ -904,6 +904,9 @@
 !
 !-- Prognostic equation for u-velocity component
     !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
+#if defined( PALM_EQUATION_VECTOR64 )
+    !$ACC VECTOR_LENGTH(64) &
+#endif
     !$ACC PRESENT(u, tend, tu_m, u_init, rdf, topo_flags, odf_x, odf_y) &
     !$ACC PRESENT(tsc(2:5)) &
     !$ACC PRESENT(u_p) IF(enable_openacc)
@@ -948,6 +951,9 @@
     IF ( timestep_scheme(1:5) == 'runge' )  THEN
        IF ( intermediate_timestep_count == 1 )  THEN
           !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
+#if defined( PALM_EQUATION_VECTOR64 )
+          !$ACC VECTOR_LENGTH(64) &
+#endif
           !$ACC PRESENT(tend, tu_m) IF(enable_openacc)
           DO  i = nxlu, nxr
              DO  j = nys, nyn
@@ -958,6 +964,9 @@
           ENDDO
        ELSEIF ( intermediate_timestep_count < intermediate_timestep_count_max )  THEN
           !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
+#if defined( PALM_EQUATION_VECTOR64 )
+          !$ACC VECTOR_LENGTH(64) &
+#endif
           !$ACC PRESENT(tend, tu_m) IF(enable_openacc)
           DO  i = nxlu, nxr
              DO  j = nys, nyn
@@ -1023,6 +1032,9 @@
 !
 !-- Prognostic equation for v-velocity component
     !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
+#if defined( PALM_EQUATION_VECTOR64 )
+    !$ACC VECTOR_LENGTH(64) &
+#endif
     !$ACC PRESENT(v, tend, tv_m, v_init, rdf, topo_flags, odf_x, odf_y) &
     !$ACC PRESENT(tsc(2:5)) &
     !$ACC PRESENT(v_p) IF(enable_openacc)
@@ -1067,6 +1079,9 @@
     IF ( timestep_scheme(1:5) == 'runge' )  THEN
        IF ( intermediate_timestep_count == 1 )  THEN
           !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
+#if defined( PALM_EQUATION_VECTOR64 )
+          !$ACC VECTOR_LENGTH(64) &
+#endif
           !$ACC PRESENT(tend, tv_m) IF(enable_openacc)
           DO  i = nxl, nxr
              DO  j = nysv, nyn
@@ -1077,6 +1092,9 @@
           ENDDO
        ELSEIF ( intermediate_timestep_count < intermediate_timestep_count_max )  THEN
           !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
+#if defined( PALM_EQUATION_VECTOR64 )
+          !$ACC VECTOR_LENGTH(64) &
+#endif
           !$ACC PRESENT(tend, tv_m) IF(enable_openacc)
           DO  i = nxl, nxr
              DO  j = nysv, nyn
@@ -1138,6 +1156,9 @@
 !
 !-- Prognostic equation for w-velocity component
     !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
+#if defined( PALM_EQUATION_VECTOR64 )
+    !$ACC VECTOR_LENGTH(64) &
+#endif
     !$ACC PRESENT(w, tend, tw_m, v_init, rdf, topo_flags, odf_x, odf_y) &
     !$ACC PRESENT(tsc(2:5)) &
     !$ACC PRESENT(w_p) IF(enable_openacc)
@@ -1159,6 +1180,9 @@
     IF ( timestep_scheme(1:5) == 'runge' )  THEN
        IF ( intermediate_timestep_count == 1 )  THEN
           !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
+#if defined( PALM_EQUATION_VECTOR64 )
+          !$ACC VECTOR_LENGTH(64) &
+#endif
           !$ACC PRESENT(tend, tw_m) IF(enable_openacc)
           DO  i = nxl, nxr
              DO  j = nys, nyn
@@ -1169,6 +1193,9 @@
           ENDDO
        ELSEIF ( intermediate_timestep_count < intermediate_timestep_count_max )  THEN
           !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
+#if defined( PALM_EQUATION_VECTOR64 )
+          !$ACC VECTOR_LENGTH(64) &
+#endif
           !$ACC PRESENT(tend, tw_m) IF(enable_openacc)
           DO  i = nxl, nxr
              DO  j = nys, nyn
@@ -1274,6 +1301,9 @@
 !
 !--    Prognostic equation for potential temperature
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
+#if defined( PALM_EQUATION_VECTOR64 )
+       !$ACC VECTOR_LENGTH(64) &
+#endif
        !$ACC PRESENT(pt, tend, tpt_m, topo_flags) &
        !$ACC PRESENT(pt_init, rdf_sc, ptdf_x, ptdf_y, odf_x, odf_y) &
        !$ACC PRESENT(tsc(3:5)) &
@@ -1297,6 +1327,9 @@
        IF ( timestep_scheme(1:5) == 'runge' )  THEN
           IF ( intermediate_timestep_count == 1 )  THEN
              !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
+#if defined( PALM_EQUATION_VECTOR64 )
+             !$ACC VECTOR_LENGTH(64) &
+#endif
              !$ACC PRESENT(tend, tpt_m) IF(enable_openacc)
              DO  i = nxl, nxr
                 DO  j = nys, nyn
@@ -1307,6 +1340,9 @@
              ENDDO
           ELSEIF ( intermediate_timestep_count < intermediate_timestep_count_max )  THEN
              !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
+#if defined( PALM_EQUATION_VECTOR64 )
+             !$ACC VECTOR_LENGTH(64) &
+#endif
              !$ACC PRESENT(tend, tpt_m) IF(enable_openacc)
              DO  i = nxl, nxr
                 DO  j = nys, nyn
@@ -1427,6 +1463,9 @@
        IF ( timestep_scheme(1:5) == 'runge' )  THEN
           IF ( intermediate_timestep_count == 1 )  THEN
              !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) &
+#if defined( PALM_EQUATION_VECTOR64 )
+             !$ACC VECTOR_LENGTH(64) &
+#endif
              !$ACC PRESENT(tend, tq_m) &
              !$ACC IF(enable_openacc)
              DO  i = nxl, nxr
@@ -1439,6 +1478,9 @@
              !$ACC END PARALLEL LOOP
           ELSEIF ( intermediate_timestep_count < intermediate_timestep_count_max )  THEN
              !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) &
+#if defined( PALM_EQUATION_VECTOR64 )
+             !$ACC VECTOR_LENGTH(64) &
+#endif
              !$ACC PRESENT(tend, tq_m) &
              !$ACC IF(enable_openacc)
              DO  i = nxl, nxr
