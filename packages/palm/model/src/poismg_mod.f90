@@ -917,6 +917,14 @@
 
     IMPLICIT NONE
 
+    INTEGER(iwp) ::  kk        !< vertical block index
+    INTEGER(iwp) ::  q         !< same-color subset
+    INTEGER(iwp) ::  ni        !< number of horizontal blocks
+    INTEGER(iwp) ::  nj        !< number of horizontal blocks
+    INTEGER(iwp) ::  nk        !< number of points per vertical block
+    INTEGER(iwp) ::  imax      !< upper horizontal index
+    INTEGER(iwp) ::  jmax      !< upper horizontal index
+
     INTEGER(iwp) ::  color  !< grid point color, either red or black
     INTEGER(iwp) ::  i      !< index variable along x
     INTEGER(iwp) ::  ic     !< index variable along x
@@ -931,6 +939,8 @@
     INTEGER(iwp) ::  save_nxl_mg  !< to save nxl_mg on coarsest level 1
     INTEGER(iwp) ::  save_nys_mg  !< to save nys_mg on coarsest level 1
 
+
+    LOGICAL ::  use_fused_gpu  !< use the same-color device loop
 
     LOGICAL ::  adjust_lower_i_index  !< adjust lower limit of i loop in case of odd number of grid points
     LOGICAL ::  adjust_lower_j_index  !< adjust lower limit of j loop in case of odd number of grid points
@@ -952,6 +962,11 @@
     l = grid_level
 
     unroll(l) = ( MOD( nyn_mg(l)-nys_mg(l)+1, 4 ) == 0  .AND.  MOD( nxr_mg(l)-nxl_mg(l)+1, 2 ) == 0 )
+    use_fused_gpu = .FALSE.
+#if defined( _OPENACC )
+    use_fused_gpu = enable_openacc .AND. .NOT. unroll(l) .AND. mg_switch_to_pe0_level < 0 .AND.    &
+                    MOD( nzt_mg(l), 2 ) == 0
+#endif
 
 !
 !-- The red/black decomposition requires that on the lower i,j indices need to start alternatively
@@ -978,7 +993,57 @@
 
        DO  color = 1, 2
 
-          IF ( .NOT. unroll(l) )  THEN
+          IF ( use_fused_gpu )  THEN
+
+             CALL cpu_log( log_point_s(36), 'redblack_no_unroll_f', 'start' )
+
+             ni = ( nxr_mg(l) - nxl_mg(l) + 2 ) / 2
+             nj = ( nyn_mg(l) - nys_mg(l) + 2 ) / 2
+             nk = nzt_mg(l) / 2
+             imax = nxr_mg(l)
+             jmax = nyn_mg(l)
+!
+!--          All four subsets update the same color and read only the opposite color.
+!--          Initialized index tables include the coarsest-level rank parity adjustment.
+             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(4) VECTOR_LENGTH(64) &
+             !$ACC DEFAULT(PRESENT) &
+             !$ACC PRIVATE(i,j,k,km1,kp1,pkjip,pkjim,pkjpi,pkjmi,pkpji,pkmji)
+             DO  q = 1, 4
+                DO  ic = 0, ni-1
+                   DO  jc = 0, nj-1
+                      DO  kk = 0, nk-1
+                         i = ileft(q,color,l) + 2 * ic
+                         j = jsouth(q,color,l) + 2 * jc
+                         k = kbottom(q,color,l) + kk
+                         IF ( i > imax .OR. j > jmax )  CYCLE
+                         IF ( q <= 2 )  THEN
+                            km1 = k - ind_even_odd - 1
+                            kp1 = k - ind_even_odd
+                         ELSE
+                            km1 = k + ind_even_odd
+                            kp1 = k + ind_even_odd + 1
+                         ENDIF
+                         pkjip = MERGE( p_mg(k,j,i), p_mg(k,j,i+1), BTEST( gl(l)%flags(k,j,i), 5 ) )
+                         pkjim = MERGE( p_mg(k,j,i), p_mg(k,j,i-1), BTEST( gl(l)%flags(k,j,i), 4 ) )
+                         pkjpi = MERGE( p_mg(k,j,i), p_mg(k,j+1,i), BTEST( gl(l)%flags(k,j,i), 3 ) )
+                         pkjmi = MERGE( p_mg(k,j,i), p_mg(k,j-1,i), BTEST( gl(l)%flags(k,j,i), 2 ) )
+                         pkpji = MERGE( p_mg(k,j,i), p_mg(kp1,j,i), BTEST( gl(l)%flags(k,j,i), 1 ) )
+                         pkmji = MERGE( p_mg(k,j,i), p_mg(km1,j,i), BTEST( gl(l)%flags(k,j,i), 0 ) )
+                         p_mg(k,j,i) = 1.0_wp / f1_mg_b(k,l) *                                    &
+                                       ( rho_air_mg_b(k,l) * ddx2_mg(l) * ( pkjip + pkjim )       &
+                                       + rho_air_mg_b(k,l) * ddy2_mg(l) * ( pkjpi + pkjmi )       &
+                                       + f2_mg_b(k,l) * pkpji  + f3_mg_b(k,l) * pkmji             &
+                                       - f_mg(k,j,i)                                              &
+                                       )
+                      ENDDO
+                   ENDDO
+                ENDDO
+             ENDDO
+             !$ACC END PARALLEL LOOP
+
+             CALL cpu_log( log_point_s(36), 'redblack_no_unroll_f', 'stop' )
+
+          ELSEIF ( .NOT. unroll(l) )  THEN
 
              CALL cpu_log( log_point_s(36), 'redblack_no_unroll_f', 'start' )
 
@@ -1452,12 +1517,12 @@
 
 !
 !-- Reset lower index limits to their standard values (may happen on coarsest levels only)
-    IF ( adjust_lower_i_index )  THEN
+    IF ( adjust_lower_i_index .AND. .NOT. use_fused_gpu )  THEN
        nxl_mg(l) = save_nxl_mg
        !$ACC UPDATE DEVICE (nxl_mg) IF(enable_openacc)
     ENDIF
 
-    IF ( adjust_lower_j_index )  THEN
+    IF ( adjust_lower_j_index .AND. .NOT. use_fused_gpu )  THEN
        nys_mg(l) = save_nys_mg
        !$ACC UPDATE DEVICE (nys_mg) IF(enable_openacc)
     ENDIF
