@@ -176,7 +176,7 @@
 
     CALL cpu_log( log_point_s(3), 'poisfft', 'start' )
 
-#if ! defined( __cuda_fft )
+#if ! defined( __cuda_fft ) && ! defined( __hip_fft )
     !$ACC UPDATE HOST(ar) IF(enable_openacc)
 #endif
 
@@ -305,7 +305,7 @@
     !$ACC END DATA
     DEALLOCATE(xy_in, zx_in, zx_out, xy_out, yz_in, yz_out)
 
-#if ! defined( __cuda_fft )
+#if ! defined( __cuda_fft ) && ! defined( __hip_fft )
     !$ACC UPDATE DEVICE(ar) IF(enable_openacc)
 #endif
 

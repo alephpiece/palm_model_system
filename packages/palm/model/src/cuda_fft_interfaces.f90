@@ -18,14 +18,31 @@
 !
 ! Description:
 ! ------------
-!> FORTRAN interfaces for the CUDA fft
-!> Routines for the fft along x and y (forward/backward) using the CUDA fft
+!> Fortran interfaces for the CUDA and HIP FFT libraries.
+!> The HIP backend retains the CUFFT procedure names used by the existing FFT callers.
 !--------------------------------------------------------------------------------------------------!
+#if defined( __cuda_fft ) && defined( __hip_fft )
+#error "Select only one GPU FFT backend: __cuda_fft or __hip_fft"
+#endif
+#if ( defined( __cuda_fft ) || defined( __hip_fft ) ) && defined( __fftw )
+#error "GPU FFT backends cannot be combined with __fftw"
+#endif
+#if ( defined( __cuda_fft ) || defined( __hip_fft ) ) && ! defined( _OPENACC )
+#error "GPU FFT backends require OpenACC compilation"
+#endif
+
  MODULE cuda_fft_interfaces
 
 #if defined( __hip_fft )
 
-    USE ISO_C_BINDING
+    USE, INTRINSIC ::  ISO_C_BINDING,                                                               &
+        ONLY:  C_DOUBLE,                                                                          &
+               C_DOUBLE_COMPLEX,                                                                  &
+               C_FLOAT,                                                                           &
+               C_FLOAT_COMPLEX,                                                                   &
+               C_INT,                                                                             &
+               C_PTR
+
     IMPLICIT NONE
 
     INTEGER(C_INT), PARAMETER :: CUFFT_R2C = 42, CUFFT_C2R = 44
@@ -48,28 +65,28 @@
           INTEGER(C_INT) :: status
        END FUNCTION hip_sync
        FUNCTION hip_R2C( plan, idata, odata ) BIND(C, NAME='hipfftExecR2C') RESULT(status)
-          IMPORT C_INT, C_PTR, C_FLOAT, C_FLOAT_COMPLEX, C_DOUBLE, C_DOUBLE_COMPLEX
+          IMPORT C_INT, C_PTR, C_FLOAT, C_FLOAT_COMPLEX
           TYPE(C_PTR), VALUE :: plan
           REAL(C_FLOAT) :: idata(*)
           COMPLEX(C_FLOAT_COMPLEX) :: odata(*)
           INTEGER(C_INT) :: status
        END FUNCTION hip_R2C
        FUNCTION hip_C2R( plan, idata, odata ) BIND(C, NAME='hipfftExecC2R') RESULT(status)
-          IMPORT C_INT, C_PTR, C_FLOAT, C_FLOAT_COMPLEX, C_DOUBLE, C_DOUBLE_COMPLEX
+          IMPORT C_INT, C_PTR, C_FLOAT, C_FLOAT_COMPLEX
           TYPE(C_PTR), VALUE :: plan
           COMPLEX(C_FLOAT_COMPLEX) :: idata(*)
           REAL(C_FLOAT) :: odata(*)
           INTEGER(C_INT) :: status
        END FUNCTION hip_C2R
        FUNCTION hip_D2Z( plan, idata, odata ) BIND(C, NAME='hipfftExecD2Z') RESULT(status)
-          IMPORT C_INT, C_PTR, C_FLOAT, C_FLOAT_COMPLEX, C_DOUBLE, C_DOUBLE_COMPLEX
+          IMPORT C_INT, C_PTR, C_DOUBLE, C_DOUBLE_COMPLEX
           TYPE(C_PTR), VALUE :: plan
           REAL(C_DOUBLE) :: idata(*)
           COMPLEX(C_DOUBLE_COMPLEX) :: odata(*)
           INTEGER(C_INT) :: status
        END FUNCTION hip_D2Z
        FUNCTION hip_Z2D( plan, idata, odata ) BIND(C, NAME='hipfftExecZ2D') RESULT(status)
-          IMPORT C_INT, C_PTR, C_FLOAT, C_FLOAT_COMPLEX, C_DOUBLE, C_DOUBLE_COMPLEX
+          IMPORT C_INT, C_PTR, C_DOUBLE, C_DOUBLE_COMPLEX
           TYPE(C_PTR), VALUE :: plan
           COMPLEX(C_DOUBLE_COMPLEX) :: idata(*)
           REAL(C_DOUBLE) :: odata(*)
@@ -82,7 +99,7 @@
     SUBROUTINE check_hipfft( status, operation )
        INTEGER(C_INT), INTENT(IN) :: status
        CHARACTER(LEN=*), INTENT(IN) :: operation
-       IF ( status /= 0 ) THEN
+       IF ( status /= 0 )  THEN
           WRITE(*,*) 'hipFFT failure: ', operation, status
           STOP 1
        ENDIF
