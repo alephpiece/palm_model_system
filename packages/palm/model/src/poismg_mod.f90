@@ -324,7 +324,7 @@
 !--    Calculate the residual if the user has not preset the number of cycles to be performed.
        IF ( maximum_mgcycles == 0 )  THEN
 
-          CALL resid( d, p_loc, r )
+          CALL resid( d, p_loc, r, interior_only=.TRUE. )
 
           maxerror = 0.0_wp
           !$ACC PARALLEL LOOP DEFAULT(PRESENT) REDUCTION(+:maxerror) IF(enable_openacc)
@@ -443,13 +443,15 @@
 ! ------------
 !> Computes the residual of the perturbation pressure.
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE resid( f_mg, p_mg, r )
+ SUBROUTINE resid( f_mg, p_mg, r, interior_only )
 
     USE control_parameters,                                                                        &
         ONLY:  ibc_p_b,                                                                            &
                ibc_p_t
 
     IMPLICIT NONE
+
+    LOGICAL, OPTIONAL, INTENT(IN) ::  interior_only  !< only internal residuals are required
 
     INTEGER(iwp) ::  i    !< index variable along x
     INTEGER(iwp) ::  j    !< index variable along y
@@ -528,6 +530,16 @@
 !
 !-- Ghost point exchange. Neumann conditions for non-cyclic horizontal boundaries are implicitly
 !-- treated via the flags array.
+!
+!-- The stopping norm uses only internal residuals. Restriction also needs the halo and uses
+!-- the complete residual, which remains the default.
+    IF ( PRESENT( interior_only ) )  THEN
+       IF ( interior_only )  THEN
+          CALL cpu_log( log_point_s(53), 'resid', 'stop' )
+          RETURN
+       ENDIF
+    ENDIF
+
     CALL exchange_horiz( r, 1, grid_level = grid_level, mg_switch_to_pe0 = mg_switch_to_pe0 )
 
 !
