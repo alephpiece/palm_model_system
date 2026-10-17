@@ -78,3 +78,25 @@ BW100的土层循环显式 `COPYIN(k)`，避免该组织中FIRSTPRIVATE复用首
 `PALM_EQUATION_VECTOR64` 不代表整个方程模块统一使用该宽度，
 也不应直接推广到默认启动与编译资源行为已变化的 DTK 26.10。
 验证覆盖两平台单卡 360 模拟秒，以及 BW100 双卡四进程 1800 模拟秒的 `test` 算例。
+
+## 可选的 GPU FFT 压力路径
+
+DTK 构建可用 `-D__hip_fft` 接入 AMD hipFFT，沿用已有 `poisfft` 的水平有限差分 FFT、
+转置和竖直三对角求解。它不改变默认压力求解器；使用时需在输入中显式选择
+`psolver = 'poisfft'`，并启用 OpenACC。设备 FFT 初始化会选择 `system-specific` 方法。
+
+在 `%cpp_options` 中加入 `-D__hip_fft`，并在 `%linker_options` 中加入 hipFFT 的库目录、
+`-lhipfft -lamdhip64` 及对应运行时搜索路径。例如 DTK 安装于 `/opt/dtk` 时可使用
+`-L/opt/dtk/hipfft/lib -Wl,-rpath,/opt/dtk/hipfft/lib -lhipfft -lamdhip64`。
+完整重新编译、链接；运行时核对实际加载的库来自目标 DTK 安装。
+此接口使用 AMD hipFFT 的指针 handle，不是面向所有 HIP 后端的通用绑定。
+
+H100 沿用 `-D__cuda_fft`，NVHPC 编译启用 `-cuda`，链接启用 `-cuda -cudalib=cufft`。
+两个 GPU 后端宏只能选一个，不能同时启用 `__fftw`，也不能用于无 OpenACC 的构建。
+运行时关闭 OpenACC 后，显式 `system-specific` 会报错；CPU Temperton/Singleton 路径保留。
+
+GPU 三对角代入按独立水平列并行，列内保留原前后递推公式与临时数组。
+它及库接口不改变原 FFT 的边界和零模态处理。选择 FFT 前仍需确认当前离散压力问题可分离；
+不能将 masking 算例的验证推广到带内部障碍的非 masking 矩阵。
+MG 与 FFT 的近似压力及后续轨迹可能不同，应以同右端残差、压力梯度和应用诊断评价，
+不能套用执行改写的逐位或 ULP 对照。本轮适用范围与性能证据由 workspace 的压力求解研究记录维护。
