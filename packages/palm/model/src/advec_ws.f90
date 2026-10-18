@@ -4641,10 +4641,10 @@
 
 #if defined( _OPENACC ) && defined( __palm_ws_sharded_stats )
     IF ( ws_use_shards .AND. sk_num == 1 ) THEN
-       !$ACC PARALLEL LOOP GANG PRIVATE(ws_sum) PRESENT(ws_partial,sums_wspts_ws_l)
+       !$ACC PARALLEL LOOP GANG VECTOR PRIVATE(ws_sum,ws_slot) PRESENT(ws_partial,sums_wspts_ws_l)
        DO k = nzb+1, nzt
           ws_sum = 0.0_wp
-          !$ACC LOOP VECTOR REDUCTION(+:ws_sum)
+          !$ACC LOOP SEQ
           DO ws_slot = 1, ws_stat_shards
              ws_sum = ws_sum + ws_partial(k,ws_slot)
           ENDDO
@@ -4652,10 +4652,10 @@
        ENDDO
     ENDIF
     IF ( ws_use_shards .AND. sk_num == 3 ) THEN
-       !$ACC PARALLEL LOOP GANG PRIVATE(ws_sum) PRESENT(ws_partial,sums_wsqs_ws_l)
+       !$ACC PARALLEL LOOP GANG VECTOR PRIVATE(ws_sum,ws_slot) PRESENT(ws_partial,sums_wsqs_ws_l)
        DO k = nzb+1, nzt
           ws_sum = 0.0_wp
-          !$ACC LOOP VECTOR REDUCTION(+:ws_sum)
+          !$ACC LOOP SEQ
           DO ws_slot = 1, ws_stat_shards
              ws_sum = ws_sum + ws_partial(k,ws_slot)
           ENDDO
@@ -6130,12 +6130,12 @@
 
 #if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
     IF ( ws_use_shards ) THEN
-       !$ACC PARALLEL LOOP GANG PRIVATE(ws_sum_1,ws_sum_2) &
+       !$ACC PARALLEL LOOP GANG VECTOR PRIVATE(ws_sum_1,ws_sum_2,ws_slot) &
        !$ACC PRESENT(ws_partial,sums_us2_ws_l,sums_wsus_ws_l)
        DO k = nzb+1, nzt
           ws_sum_1 = 0.0_wp
           ws_sum_2 = 0.0_wp
-          !$ACC LOOP VECTOR REDUCTION(+:ws_sum_1,ws_sum_2)
+          !$ACC LOOP SEQ
           DO ws_slot = 1, ws_stat_shards
              ws_sum_1 = ws_sum_1 + ws_partial(k,ws_slot,1)
              ws_sum_2 = ws_sum_2 + ws_partial(k,ws_slot,2)
@@ -6886,12 +6886,12 @@
 
 #if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
     IF ( ws_use_shards ) THEN
-       !$ACC PARALLEL LOOP GANG PRIVATE(ws_sum_1,ws_sum_2) &
+       !$ACC PARALLEL LOOP GANG VECTOR PRIVATE(ws_sum_1,ws_sum_2,ws_slot) &
        !$ACC PRESENT(ws_partial,sums_vs2_ws_l,sums_wsvs_ws_l)
        DO k = nzb+1, nzt
           ws_sum_1 = 0.0_wp
           ws_sum_2 = 0.0_wp
-          !$ACC LOOP VECTOR REDUCTION(+:ws_sum_1,ws_sum_2)
+          !$ACC LOOP SEQ
           DO ws_slot = 1, ws_stat_shards
              ws_sum_1 = ws_sum_1 + ws_partial(k,ws_slot,1)
              ws_sum_2 = ws_sum_2 + ws_partial(k,ws_slot,2)
@@ -7590,11 +7590,11 @@
 
 #if defined( _OPENACC ) && defined( PALM_WS_MOMENTUM_SHARDS )
     IF ( ws_use_shards ) THEN
-       !$ACC PARALLEL LOOP GANG PRIVATE(ws_sum_1) &
+       !$ACC PARALLEL LOOP GANG VECTOR PRIVATE(ws_sum_1,ws_slot) &
        !$ACC PRESENT(ws_partial,sums_ws2_ws_l)
        DO k = nzb+1, ws_k_end
           ws_sum_1 = 0.0_wp
-          !$ACC LOOP VECTOR REDUCTION(+:ws_sum_1)
+          !$ACC LOOP SEQ
           DO ws_slot = 1, ws_stat_shards
              ws_sum_1 = ws_sum_1 + ws_partial(k,ws_slot,1)
           ENDDO
