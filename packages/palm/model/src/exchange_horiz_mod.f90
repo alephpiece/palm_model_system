@@ -125,6 +125,11 @@
     INTEGER(iwp) ::  j             !< loop index
     INTEGER(iwp) ::  k             !< loop index
     INTEGER(iwp) ::  l             !< grid level to choose the dreived datatypes
+    INTEGER(iwp) ::  edge          !< position along a periodic boundary
+    INTEGER(iwp) ::  js            !< interior source index for periodic corners
+    INTEGER(iwp) ::  nx_local      !< number of internal x points
+    INTEGER(iwp) ::  ny_local      !< number of internal y points
+    INTEGER(iwp) ::  edge_count    !< common extent of the boundary loops
     INTEGER(iwp) ::  left_pe       !< id of left pe that is used as argument in MPI calls
     INTEGER(iwp) ::  nbgp_local    !< number of ghost point layers
     INTEGER(iwp) ::  north_pe      !< id of north pe that is used as argument in MPI calls
@@ -135,6 +140,7 @@
 
     LOGICAL ::  switch_to_pe0  !< local switch telling if total domain is gathered on one PE
     LOGICAL ::  lacc          !< OpenACC path only if ar is present on device
+    LOGICAL ::  local_periodic  !< both periodic directions reside on this PE
 
 
     REAL(wp), DIMENSION(nzb:nzt+1,nys-nbgp_local:nyn+nbgp_local,                                   &
@@ -158,6 +164,45 @@
 #else
     lacc = .FALSE.
 #endif
+
+!
+!-- A fully local periodic halo can read every face and corner directly from the interior.
+!-- The x faces include corners; the y faces exclude them, so all writes are disjoint.
+    local_periodic = .TRUE.
+#if defined( __parallel )
+    local_periodic = npex == 1 .AND. npey == 1
+#endif
+    nx_local = nxr - nxl + 1
+    ny_local = nyn - nys + 1
+    IF ( lacc .AND. local_periodic .AND. bc_lr_cyc .AND. bc_ns_cyc .AND.                        &
+         .NOT. PRESENT( alternative_communicator ) .AND. nbgp_local > 0 .AND.                 &
+         nbgp_local <= MIN( nx_local, ny_local ) )  THEN
+       edge_count = MAX( nx_local, ny_local + 2 * nbgp_local )
+       !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) VECTOR_LENGTH(64) &
+       !$ACC DEFAULT(PRESENT) PRIVATE(j,js)
+       DO  edge = 0, edge_count-1
+          DO  i = 1, nbgp_local
+             DO  k = nzb, nzt+1
+                IF ( edge < ny_local + 2 * nbgp_local )  THEN
+                   j = nys - nbgp_local + edge
+                   js = j
+                   IF ( js < nys )  js = js + ny_local
+                   IF ( js > nyn )  js = js - ny_local
+                   ar(k,j,nxl-nbgp_local-1+i) = ar(k,js,nxr-nbgp_local+i)
+                   ar(k,j,nxr+i) = ar(k,js,nxl+i-1)
+                ENDIF
+                IF ( edge < nx_local )  THEN
+                   j = nxl + edge
+                   ar(k,nys-nbgp_local-1+i,j) = ar(k,nyn-nbgp_local+i,j)
+                   ar(k,nyn+i,j) = ar(k,nys+i-1,j)
+                ENDIF
+             ENDDO
+          ENDDO
+       ENDDO
+       !$ACC END PARALLEL LOOP
+       CALL cpu_log( log_point_s(2), 'exchange_horiz', 'stop' )
+       RETURN
+    ENDIF
 
 !
 !-- Set the communicator to be used
@@ -293,22 +338,12 @@
              bufsize = ( nzt - nzb + 2 ) * ( nxr - nxl + 1 ) * nbgp_local
 
 !
-!--          Pack data for sending south boundary.
+!--          Pack south and north boundaries into independent buffers.
              !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
              DO  i = nxl, nxr
                 DO  j = 1, nbgp_local
                    DO  k = nzb, nzt+1
                       sendbuf1(k,i,j) = ar(k,nys+j-1,i)
-                   ENDDO
-                ENDDO
-             ENDDO
-             !$ACC END PARALLEL LOOP
-!
-!--          Pack data for sending north boundary.
-             !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
-             DO  i = nxl, nxr
-                DO  j = 1, nbgp_local
-                   DO  k = nzb, nzt+1
                       sendbuf2(k,i,j) = ar(k,nyn-nbgp_local+j,i)
                    ENDDO
                 ENDDO
@@ -339,22 +374,12 @@
 
              CALL MPI_WAITALL( 4, req, wait_stat, ierr )
 !
-!--          Unpack received north boundary data
+!--          Unpack north and south boundaries into disjoint ghost layers.
              !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
              DO  i = nxl, nxr
                 DO  j = 1, nbgp_local
                    DO  k = nzb, nzt+1
                       ar(k,nyn+j,i) = recvbuf1(k,i,j)
-                   ENDDO
-                ENDDO
-             ENDDO
-             !$ACC END PARALLEL LOOP
-!
-!--          Unpack received south boundary data
-             !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
-             DO  i = nxl, nxr
-                DO  j = 1, nbgp_local
-                   DO  k = nzb, nzt+1
                       ar(k,nys-nbgp_local-1+j,i) = recvbuf2(k,i,j)
                    ENDDO
                 ENDDO
