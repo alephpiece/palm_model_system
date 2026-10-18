@@ -542,14 +542,14 @@
 #if defined( PALM_FLOW_HUMIDITY_SHARDS_ACTIVE )
           !$ACC PARALLEL LOOP GANG COLLAPSE(2) PRIVATE(fh_part) DEFAULT(PRESENT) IF(enable_openacc)
 #else
-          !$ACC PARALLEL LOOP GANG DEFAULT(PRESENT) IF(enable_openacc)
+          !$ACC PARALLEL LOOP GANG COLLAPSE(2) DEFAULT(PRESENT) IF(enable_openacc)
 #endif
           DO  i = nxl, nxr
              DO  j =  nys, nyn
 #if defined( PALM_FLOW_HUMIDITY_SHARDS_ACTIVE )
                 fh_part = MOD( (i-nxl)*(nyn-nys+1)+j-nys, fh_nparts ) + 1
-                !$ACC LOOP VECTOR PRIVATE(flag)
 #endif
+                !$ACC LOOP VECTOR PRIVATE(flag)
                 DO  k = nzb, nzt+1
                    flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 22 ) )
                    !$ACC ATOMIC UPDATE
@@ -771,7 +771,7 @@
 #if defined( PALM_FLOW_MIXED_SHARDS_ACTIVE )
        !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(fm_part) &
 #else
-       !$ACC PARALLEL LOOP COLLAPSE(2) &
+       !$ACC PARALLEL LOOP GANG COLLAPSE(2) &
 #endif
        !$ACC PRIVATE(dissipation, du_dx, du_dy, du_dz, dv_dx, dv_dy, dv_dz, dw_dx, dw_dy, dw_dz ) &
        !$ACC PRIVATE(eta, flag, i, j, k, m, sums_l_etot, s11, s21, s31, s12, s22, s32, s13, s23, s33) &
@@ -783,6 +783,12 @@
              fm_part = MOD( (i-nxl)*(nyn-nys+1)+j-nys, fm_nparts ) + 1
 #endif
              sums_l_etot = 0.0_wp
+#if ! defined( PALM_FLOW_MIXED_SHARDS_ACTIVE )
+             !$ACC LOOP VECTOR REDUCTION(+:sums_l_etot) &
+             !$ACC PRIVATE(dissipation, du_dx, du_dy, du_dz, dv_dx, dv_dy, dv_dz) &
+             !$ACC PRIVATE(dw_dx, dw_dy, dw_dz, eta, flag, s11, s21, s31) &
+             !$ACC PRIVATE(s12, s22, s32, s13, s23, s33)
+#endif
              DO  k = nzb, nzt+1
                 flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 22 ) )
 !
@@ -1154,7 +1160,7 @@
 #if defined( PALM_FLOW_FLUX_SHARDS_ACTIVE )
        !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(fs_part, flag, i, j, k, m, pts, ust, vst) &
 #else
-       !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(flag, i, j, k, m, pts, ust, vst) &
+       !$ACC PARALLEL LOOP GANG COLLAPSE(2) PRIVATE(flag, i, j, k, m, pts, ust, vst) &
 #endif
        !$ACC PRESENT( surf_def, surf_lsm, surf_top, surf_usm) &
        !$ACC DEFAULT(PRESENT) IF(enable_openacc)
@@ -1171,6 +1177,9 @@
 !--                the walls and inside buildings.
 !--          Flag 23 is used to mask surface fluxes as well as model-top fluxes, which are added
 !--          further below.
+#if ! defined( PALM_FLOW_FLUX_SHARDS_ACTIVE )
+             !$ACC LOOP VECTOR PRIVATE(flag)
+#endif
              DO  k = nzb, nzt
                 flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 23 ) ) *                   &
                        MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 9  ) )
@@ -1629,6 +1638,9 @@
 !--          NOTE: for simplicity, nzb_s_inner is used below, although strictly speaking the
 !--          ----  following k-loop would have to be split up and rearranged according to the
 !--                staggered grid.
+#if ! defined( PALM_FLOW_FLUX_SHARDS_ACTIVE )
+             !$ACC LOOP VECTOR PRIVATE(flag, ust, vst, pts)
+#endif
              DO  k = nzb, nzt
                 flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 22 ) )
                 ust = 0.5_wp * ( u(k,j,i)   - hom(k,1,1,sr) +                                      &
