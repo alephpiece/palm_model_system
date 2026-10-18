@@ -79,11 +79,14 @@ BW100的土层循环显式 `COPYIN(k)`，避免该组织中FIRSTPRIVATE复用首
 也不应直接推广到默认启动与编译资源行为已变化的 DTK 26.10。
 验证覆盖两平台单卡 360 模拟秒，以及 BW100 双卡四进程 1800 模拟秒的 `test` 算例。
 
-## 可选的 GPU FFT 压力路径
+## GPU FFT 压力路径
 
 DTK 构建可用 `-D__hip_fft` 接入 AMD hipFFT，沿用已有 `poisfft` 的水平有限差分 FFT、
-转置和竖直三对角求解。它不改变默认压力求解器；使用时需在输入中显式选择
-`psolver = 'poisfft'`，并启用 OpenACC。设备 FFT 初始化会选择 `system-specific` 方法。
+转置和竖直三对角求解。源码的默认压力求解器为 `poisfft`；workspace 的常用性能测试也显式
+选择 `psolver = 'poisfft'` 和 `fft_method = 'system-specific'`。
+`tools/palm/build.py` 默认为 DTK／NVHPC GPU 构建启用 hipFFT／cuFFT；
+`--no-gpu-fft` 可关闭库接入，纯 CPU 构建不启用。MG 仍可通过输入选择。
+设备 FFT 要求 OpenACC，初始化会选择 `system-specific` 方法。
 
 在 `%cpp_options` 中加入 `-D__hip_fft`，并在 `%linker_options` 中加入 hipFFT 的库目录、
 `-lhipfft -lamdhip64` 及对应运行时搜索路径。例如 DTK 安装于 `/opt/dtk` 时可使用
