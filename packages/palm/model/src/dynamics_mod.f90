@@ -850,7 +850,7 @@
 !--       Too high relative humidities may occur if no cloud water condensation is considered.
           IF ( humidity  .AND.  .NOT. neutral  .AND.  check_realistic_q  .AND.  rh_valid )  THEN
              rh_valid_l = rh_valid
-             !$ACC PARALLEL LOOP GANG REDUCTION(.and.: rh_valid_l) &
+             !$ACC PARALLEL LOOP COLLAPSE(3) REDUCTION(.and.: rh_valid_l) &
              !$ACC PRIVATE(e_s, q_s) &
              !$ACC DEFAULT(PRESENT) IF(enable_openacc)
              DO  i = nxl, nxr
