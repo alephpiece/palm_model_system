@@ -109,7 +109,7 @@
     CALL maketri
     CALL split
 
-#if defined ( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
     !$ACC ENTER DATA &
     !$ACC COPYIN(ddzuw(0:nz-1,1:3)) &
     !$ACC COPYIN(tri(nxl_z:nxr_z,nys_z:nyn_z,0:nz-1,1:2)) IF(enable_openacc)
@@ -290,18 +290,35 @@
     REAL(wp), ALLOCATABLE, DIMENSION(:,:,:) ::  ar1  !<
 
     ALLOCATE(ar1(nxl_z:nxr_z,nys_z:nyn_z,0:nz-1))
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
     !$ACC DATA CREATE(ar1) IF(enable_openacc)
 #endif
 
+#if defined( __cuda_fft ) || defined( __hip_fft )
+    IF ( enable_openacc )  THEN
+!      Columns are independent; the forward and backward recurrences remain sequential within each.
+       !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(2) &
+       !$ACC PRESENT(ar, ar1, tri, ddzuw) PRIVATE(k)
+       DO  j = nys_z, nyn_z
+          DO  i = nxl_z, nxr_z
+             ar1(i,j,0) = ar(i,j,1)
+             !$ACC LOOP SEQ
+             DO  k = 1, nz - 1
+                ar1(i,j,k) = ar(i,j,k+1) - tri(i,j,k,2) * ar1(i,j,k-1)
+             ENDDO
+             ar(i,j,nz) = ar1(i,j,nz-1) / ( tri(i,j,nz-1,1) + 1.0E-20_wp )
+             !$ACC LOOP SEQ
+             DO  k = nz-2, 0, -1
+                ar(i,j,k+1) = ( ar1(i,j,k) - ddzuw(k,2) * ar(i,j,k+2) ) / tri(i,j,k,1)
+             ENDDO
+          ENDDO
+       ENDDO
+    ELSE
+#endif
     !$OMP PARALLEL PRIVATE(i,j,k)
 
 !
 !-- Forward substitution
-#if defined( __cuda_fft )
-    !$ACC PARALLEL PRESENT(ar, ar1, tri) PRIVATE(i,j,k) DEFAULT(NONE) IF(enable_openacc)
-    !$ACC LOOP COLLAPSE(2)
-#endif
 !
 !-- First k=0.
     !$OMP DO
@@ -313,9 +330,6 @@
 !
 !-- Now the remaining k-levels.
     DO  k = 1, nz - 1
-#if defined( __cuda_fft )
-       !$ACC LOOP COLLAPSE(2)
-#endif
        !$OMP DO
        DO  j = nys_z, nyn_z
           DO  i = nxl_z, nxr_z
@@ -323,18 +337,11 @@
           ENDDO
        ENDDO
     ENDDO
-#if defined( __cuda_fft )
-    !$ACC END PARALLEL
-#endif
 
 !
 !-- Backward substitution
 !-- Note, the 1.0E-20 in the denominator is due to avoid divisions by zero appearing if the
 !-- pressure bc is set to neumann at the top of the model domain.
-#if defined( __cuda_fft )
-    !$ACC PARALLEL PRESENT(ar, ar1, ddzuw, tri) PRIVATE(i,j,k) DEFAULT(NONE) IF(enable_openacc)
-    !$ACC LOOP COLLAPSE(2)
-#endif
 !
 !-- First k=nz-1.
     !$OMP DO
@@ -346,9 +353,6 @@
 !
 !-- Now the remaining k-levels.
     DO  k = nz-2, 0, -1
-#if defined( __cuda_fft )
-       !$ACC LOOP COLLAPSE(2)
-#endif
        !$OMP DO
        DO  j = nys_z, nyn_z
           DO  i = nxl_z, nxr_z
@@ -356,11 +360,11 @@
           ENDDO
        ENDDO
     ENDDO
-#if defined( __cuda_fft )
-    !$ACC END PARALLEL
-#endif
 
     !$OMP END PARALLEL
+#if defined( __cuda_fft ) || defined( __hip_fft )
+    ENDIF
+#endif
 
     IF ( bc_lr_cyc  .OR.  bc_ns_cyc )  THEN
 !
@@ -370,7 +374,7 @@
 !--    For cyclic boundary conditions only. For non-cyclic conditions see routine split.
        IF ( ibc_p_b == 1  .AND.  ibc_p_t == 1 )  THEN
           IF ( nys_z == 0  .AND.  nxl_z == 0 )  THEN
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
              !$ACC PARALLEL LOOP PRESENT(ar) IF(enable_openacc)
 #endif
              DO  k = 1, nz
@@ -385,7 +389,7 @@
 
     ENDIF
 
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
     !$ACC END DATA
 #endif
     DEALLOCATE(ar1)

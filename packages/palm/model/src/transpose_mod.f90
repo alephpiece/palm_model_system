@@ -209,9 +209,9 @@
 
        !$OMP  PARALLEL PRIVATE ( i, j, k, ii, l )
        !$OMP  DO
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
        !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i,j,k,ii,l) &
-       !$ACC PRESENT(f_inv, f_in) PRESENT(nxl_y_pe, nxr_y_pe) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(f_inv, f_in) PRESENT(nxl_y_pe, nxr_y_pe) IF(enable_openacc)
 #endif
        DO  k = nzb_x, nzt_x
           DO  j = nys_x, nyn_x
@@ -230,9 +230,9 @@
 
        !$OMP  PARALLEL PRIVATE ( i, j, k )
        !$OMP  DO
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i,j,k) &
-       !$ACC PRESENT(f_inv, f_in) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(f_inv, f_in) IF(enable_openacc)
 #endif
        DO  k = nzb_x, nzt_x
           DO  j = nys_x, nyn_x
@@ -292,7 +292,7 @@
     REAL(wp), ALLOCATABLE, DIMENSION(:,:,:,:) ::  work  !<
 
     ALLOCATE(work(nyn_x_max-nys_x+1,nzb_y:nzt_y,nxl_y:nxr_y_max,0:npey-1))
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
     !$ACC DATA CREATE(work) IF(enable_openacc)
 #endif
 #endif
@@ -305,7 +305,7 @@
 !--    Transpose array
        CALL cpu_log( log_point_s(32), 'mpi_alltoall', 'start', cpu_log_nowait )
 
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
        !$ACC HOST_DATA USE_DEVICE(work, f_inv) IF(enable_openacc)
 #endif
 
@@ -313,7 +313,7 @@
        CALL MPI_ALLTOALL( f_inv(nys_x,nzb_x,0),  sendrecvcount_xy, MPI_REAL,                       &
                           work(1,nzb_y,nxl_y,0), sendrecvcount_xy, MPI_REAL, comm1dy, ierr )
 
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
        !$ACC END HOST_DATA
 #endif
 
@@ -324,9 +324,9 @@
        IF ( non_uniform_data_for_transpose )  THEN
 
           !$OMP  PARALLEL PRIVATE ( i, j, k, l, jj )
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
           !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i,j,k,jj) &
-          !$ACC PRESENT(f_out, work) PRESENT(nny_pe) DEFAULT(NONE) IF(enable_openacc)
+          !$ACC PRESENT(f_out, work) PRESENT(nny_pe) IF(enable_openacc)
 #endif
           !$OMP DO
           DO  i = nxl_y, nxr_y
@@ -347,7 +347,7 @@
           !$OMP  PARALLEL PRIVATE ( i, j, k, l, ys )
           DO  l = 0, npey - 1
              ys = 0 + l * ( nyn_x - nys_x + 1 )
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
              !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i,j,k) &
              !$ACC PRESENT(f_out, work) IF(enable_openacc)
 #endif
@@ -372,9 +372,9 @@
 !--    Reorder transposed array
        !$OMP  PARALLEL PRIVATE ( i, j, k )
        !$OMP  DO
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i,j,k) &
-       !$ACC PRESENT(f_out, f_inv) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(f_out, f_inv) IF(enable_openacc)
 #endif
        DO  k = nzb_y, nzt_y
           DO  i = nxl_y, nxr_y
@@ -388,7 +388,7 @@
     ENDIF
 
 #if defined( __parallel )
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
     !$ACC END DATA
 #endif
     DEALLOCATE(work)
@@ -436,9 +436,9 @@
 
        !$OMP PARALLEL PRIVATE ( i, j, k, kk, l )
        !$OMP DO
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
        !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i,j,k) &
-       !$ACC PRESENT(f_out, f_inv) PRESENT(nzb_x_pe, nzt_x_pe) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(f_out, f_inv) PRESENT(nzb_x_pe, nzt_x_pe) IF(enable_openacc)
 #endif
        DO  i = nxl, nxr
           DO  j = nys, nyn
@@ -457,9 +457,9 @@
 
        !$OMP  PARALLEL PRIVATE ( i, j, k )
        !$OMP  DO
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i,j,k) &
-       !$ACC PRESENT(f_out, f_inv) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(f_out, f_inv) IF(enable_openacc)
 #endif
        DO  i = nxl, nxr
           DO  j = nys, nyn
@@ -534,7 +534,7 @@
     REAL(wp), ALLOCATABLE, DIMENSION(:,:,:,:) ::  work  !<
 
     ALLOCATE(work(nys_x:nyn_x,nnx_x_max,nzb_x:nzt_x_max,0:npex-1))
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
     !$ACC DATA CREATE(work) IF(enable_openacc)
 #endif
 #endif
@@ -579,9 +579,9 @@
           !$OMP  PARALLEL PRIVATE ( i, j, k, l, xs, ii )
           DO  l = 0, npex - 1
              xs = 0 + l * nnx
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
              !$ACC PARALLEL LOOP PRIVATE(i,j,k,ii) &
-             !$ACC PRESENT(work, f_in) PRESENT(nxr_pe, nxl_pe) DEFAULT(NONE) IF(enable_openacc)
+             !$ACC PRESENT(work, f_in) PRESENT(nxr_pe, nxl_pe) IF(enable_openacc)
 #endif
              !$OMP DO
              DO  k = nzb_x, nzt_x
@@ -610,7 +610,7 @@
 !--    Transpose array
        CALL cpu_log( log_point_s(32), 'mpi_alltoall', 'start', cpu_log_nowait )
 
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
        !$ACC HOST_DATA USE_DEVICE(work, f_inv) IF(enable_openacc)
 #endif
 
@@ -618,7 +618,7 @@
        CALL MPI_ALLTOALL( work(nys_x,1,nzb_x,0), sendrecvcount_zx, MPI_REAL,                       &
                           f_inv(nys,nxl,1),      sendrecvcount_zx, MPI_REAL, comm1dx, ierr )
 
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
        !$ACC END HOST_DATA
 #endif
        CALL cpu_log( log_point_s(32), 'mpi_alltoall', 'stop' )
@@ -630,9 +630,9 @@
 !--    Reorder the array in a way that the z index is in first position
        !$OMP PARALLEL PRIVATE ( i, j, k )
        !$OMP DO
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i,j,k) &
-       !$ACC PRESENT(f_inv, f_in) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(f_inv, f_in) IF(enable_openacc)
 #endif
        DO  i = nxl, nxr
           DO  j = nys, nyn
@@ -646,7 +646,7 @@
     ENDIF
 
 #if defined( __parallel )
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
     !$ACC END DATA
 #endif
     DEALLOCATE(work)
@@ -690,9 +690,9 @@
 
        !$OMP  PARALLEL PRIVATE ( i, j, k, ii, l )
        !$OMP  DO
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
        !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i,j,k,ii,l) &
-       !$ACC PRESENT(f_inv, f_out) PRESENT(nxl_y_pe, nxr_y_pe) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(f_inv, f_out) PRESENT(nxl_y_pe, nxr_y_pe) IF(enable_openacc)
 #endif
        DO  k = nzb_x, nzt_x
           DO  j = nys_x, nyn_x
@@ -711,9 +711,9 @@
 
        !$OMP PARALLEL PRIVATE ( i, j, k )
        !$OMP DO
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i,j,k) &
-       !$ACC PRESENT(f_out, f_inv) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(f_out, f_inv) IF(enable_openacc)
 #endif
        DO  k = nzb_x, nzt_x
           DO  j = nys_x, nyn_x
@@ -775,7 +775,7 @@
     REAL(wp), ALLOCATABLE, DIMENSION(:,:,:,:) ::  work  !<
 
     ALLOCATE(work(nyn_x_max-nys_x+1,nzb_y:nzt_y,nxl_y:nxr_y_max,0:npey-1))
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
     !$ACC DATA CREATE(work) IF(enable_openacc)
 #endif
 #endif
@@ -789,9 +789,9 @@
        IF ( non_uniform_data_for_transpose )  THEN
 
           !$OMP PARALLEL PRIVATE ( i, j, k, l, jj)
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
           !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i,j,k,l,jj) &
-          !$ACC PRESENT(work, f_in) PRESENT(nny_pe) DEFAULT(NONE) IF(enable_openacc)
+          !$ACC PRESENT(work, f_in) PRESENT(nny_pe) IF(enable_openacc)
 #endif
           !$OMP DO
           DO  i = nxl_y, nxr_y
@@ -813,7 +813,7 @@
           !$OMP PARALLEL PRIVATE ( i, j, k, l, ys )
           DO  l = 0, npey - 1
              ys = 0 + l * ( nyn_x - nys_x + 1 )
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
              !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i,j,k) &
              !$ACC PRESENT(work, f_in) IF(enable_openacc)
 #endif
@@ -835,7 +835,7 @@
 !--    Transpose array
        CALL cpu_log( log_point_s(32), 'mpi_alltoall', 'start', cpu_log_nowait )
 
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
        !$ACC HOST_DATA USE_DEVICE(work, f_inv) IF(enable_openacc)
 #endif
 
@@ -843,7 +843,7 @@
        CALL MPI_ALLTOALL( work(1,nzb_y,nxl_y,0), sendrecvcount_xy, MPI_REAL,                       &
                           f_inv(nys_x,nzb_x,0),  sendrecvcount_xy, MPI_REAL, comm1dy, ierr )
 
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
        !$ACC END HOST_DATA
 #endif
        CALL cpu_log( log_point_s(32), 'mpi_alltoall', 'stop' )
@@ -855,9 +855,9 @@
 !--    Reorder array f_in the same way as ALLTOALL did it.
        !$OMP PARALLEL PRIVATE ( i, j, k )
        !$OMP DO
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i,j,k) &
-       !$ACC PRESENT(f_inv, f_in) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(f_inv, f_in) IF(enable_openacc)
 #endif
        DO  i = nxl_y, nxr_y
           DO  k = nzb_y, nzt_y
@@ -871,7 +871,7 @@
     ENDIF
 
 #if defined( __parallel )
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
     !$ACC END DATA
 #endif
     DEALLOCATE(work)
@@ -912,9 +912,9 @@
 !-- Rearrange indices of input array in order to make data to be send by MPI contiguous.
     !$OMP PARALLEL PRIVATE ( i, j, k, l, jj )
     !$OMP DO
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
     !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i,j,k,l,jj) &
-    !$ACC PRESENT(f_inv, f_in) PRESENT(nyn_z_pe, nys_z_pe) DEFAULT(NONE) IF(enable_openacc)
+    !$ACC PRESENT(f_inv, f_in) PRESENT(nyn_z_pe, nys_z_pe) IF(enable_openacc)
 #endif
     DO  k = nzb_y, nzt_y
        DO  i = nxl_y, nxr_y
@@ -981,7 +981,7 @@
     REAL(wp), ALLOCATABLE, DIMENSION(:,:,:,:) ::  work  !<
 
     ALLOCATE(work(nxl_z:nxr_z,nnz_z_max,nys_z:nyn_z_max,0:npex-1))
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
     !$ACC DATA CREATE(work) IF(enable_openacc)
 #endif
 #endif
@@ -994,9 +994,9 @@
 
        !$OMP PARALLEL PRIVATE ( i, j, k )
        !$OMP DO
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i,j,k) &
-       !$ACC PRESENT(f_out, f_inv) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(f_out, f_inv) IF(enable_openacc)
 #endif
        DO  j = 0, ny
           DO  k = nzb_y, nzt_y
@@ -1014,14 +1014,14 @@
 !--    Transpose array
        CALL cpu_log( log_point_s(32), 'mpi_alltoall', 'start', cpu_log_nowait )
 
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
        !$ACC HOST_DATA USE_DEVICE(work, f_inv) IF(enable_openacc)
 #endif
        IF ( collective_wait )  CALL MPI_BARRIER( comm2d, ierr )
        CALL MPI_ALLTOALL( f_inv(nxl_y,nzb_y,0),  sendrecvcount_yz, MPI_REAL,                       &
                           work(nxl_z,1,nys_z,0), sendrecvcount_yz, MPI_REAL, comm1dx, ierr )
 
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
        !$ACC END HOST_DATA
 #endif
 
@@ -1032,9 +1032,9 @@
        IF ( non_uniform_data_for_transpose )  THEN
 
           !$OMP PARALLEL PRIVATE ( i, j, k, l, kk )
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
           !$ACC PARALLEL LOOP PRIVATE(i,j,k,l,kk) &
-          !$ACC PRESENT(f_out, work) PRESENT(nzb_x_pe, nzt_x_pe) DEFAULT(NONE) IF(enable_openacc)
+          !$ACC PRESENT(f_out, work) PRESENT(nzb_x_pe, nzt_x_pe) IF(enable_openacc)
 #endif
           !$OMP DO
           DO  j = nys_z, nyn_z
@@ -1055,7 +1055,7 @@
           !$OMP PARALLEL PRIVATE ( i, j, k, l, zs )
           DO  l = 0, npex - 1
              zs = 1 + l * ( nzt_y - nzb_y + 1 )
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
              !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i,j,k) &
              !$ACC PRESENT(f_out, work) IF(enable_openacc)
 #endif
@@ -1077,7 +1077,7 @@
    ENDIF
 
 #if defined( __parallel )
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
     !$ACC END DATA
 #endif
     DEALLOCATE(work)
@@ -1124,9 +1124,9 @@
 
        !$OMP PARALLEL PRIVATE ( i, j, k, kk, l )
        !$OMP DO
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
        !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i,j,k,kk,l)   &
-       !$ACC PRESENT(f_in, f_inv) PRESENT(nzb_x_pe, nzt_x_pe) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(f_in, f_inv) PRESENT(nzb_x_pe, nzt_x_pe) IF(enable_openacc)
 #endif
        DO  i = nxl, nxr
           DO  j = nys, nyn
@@ -1145,9 +1145,9 @@
 
        !$OMP PARALLEL PRIVATE ( i, j, k )
        !$OMP DO
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i,j,k) &
-       !$ACC PRESENT(f_in, f_inv) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(f_in, f_inv) IF(enable_openacc)
 #endif
        DO  i = nxl, nxr
           DO  j = nys, nyn
@@ -1202,9 +1202,9 @@
 !-- Rearrange indices of input array in order to make data to be send by MPI contiguous.
     !$OMP PARALLEL PRIVATE ( i, j, k, kk, l )
     !$OMP DO
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
     !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i,j,k,kk,l)   &
-    !$ACC PRESENT(f_in, f_inv) PRESENT(nzb_x_pe_diffnz, nzt_x_pe_diffnz) DEFAULT(NONE) IF(enable_openacc)
+    !$ACC PRESENT(f_in, f_inv) PRESENT(nzb_x_pe_diffnz, nzt_x_pe_diffnz) IF(enable_openacc)
 #endif
     DO  i = nxl, nxr
        DO  j = nys, nyn
@@ -1283,7 +1283,7 @@
     REAL(wp), ALLOCATABLE, DIMENSION(:,:,:,:) ::  work  !<
 
     ALLOCATE(work(nys_x:nyn_x,nnx_x_max,nzb_x:nzt_x_max,0:npex-1))
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
     !$ACC DATA CREATE(work) IF(enable_openacc)
 #endif
 #endif
@@ -1296,9 +1296,9 @@
 
        !$OMP PARALLEL PRIVATE ( i, j, k )
        !$OMP DO
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i,j,k) &
-       !$ACC PRESENT(f_out, f_inv) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(f_out, f_inv) IF(enable_openacc)
 #endif
        DO  k = 1, nz
           DO  i = nxl, nxr
@@ -1316,7 +1316,7 @@
 !--    Transpose array
        CALL cpu_log( log_point_s(32), 'mpi_alltoall', 'start', cpu_log_nowait )
 
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
        !$ACC HOST_DATA USE_DEVICE(work, f_inv) IF(enable_openacc)
 #endif
 
@@ -1324,7 +1324,7 @@
        CALL MPI_ALLTOALL( f_inv(nys,nxl,1),      sendrecvcount_zx, MPI_REAL,                       &
                           work(nys_x,1,nzb_x,0), sendrecvcount_zx, MPI_REAL, comm1dx, ierr )
 
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
        !$ACC END HOST_DATA
 #endif
 
@@ -1369,9 +1369,9 @@
           !$OMP PARALLEL PRIVATE ( i, j, k, l, xs, ii )
           DO  l = 0, npex - 1
              xs = 0 + l * nnx
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
              !$ACC PARALLEL LOOP PRIVATE(i,j,k,ii) &
-             !$ACC PRESENT(f_out, work) PRESENT(nxr_pe, nxl_pe) DEFAULT(NONE) IF(enable_openacc)
+             !$ACC PRESENT(f_out, work) PRESENT(nxr_pe, nxl_pe) IF(enable_openacc)
 #endif
              !$OMP DO
              DO  k = nzb_x, nzt_x
@@ -1401,7 +1401,7 @@
     ENDIF
 
 #if defined( __parallel )
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
     !$ACC END DATA
 #endif
     DEALLOCATE(work)
@@ -1463,7 +1463,7 @@
     REAL(sp), ALLOCATABLE, DIMENSION(:,:,:,:) ::  work  !<
 
     ALLOCATE(work(nys_x:nyn_x,nnx_x_max,nzb_x_diffnz:nzt_x_max_diffnz,0:npex-1))
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
     !$ACC DATA CREATE(work) IF(enable_openacc)
 #endif
 
@@ -1476,7 +1476,7 @@
 !-- Transpose array
     CALL cpu_log( log_point_s(65), 'mpi_alltoall (nzt_do)', 'start', cpu_log_nowait )
 
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
     !$ACC HOST_DATA USE_DEVICE(work, f_inv) IF(enable_openacc)
 #endif
 
@@ -1488,7 +1488,7 @@
                        work(nys_x,1,nzb_x_diffnz,0), sendrecvcount_zx_diffnz, mpi_real,         &
                        comm1dx, ierr )
 
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
     !$ACC END HOST_DATA
 #endif
 
@@ -1497,9 +1497,9 @@
     !$OMP PARALLEL PRIVATE ( i, j, k, l, xs, ii )
     DO  l = 0, npex - 1
        xs = 0 + l * nnx
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
        !$ACC PARALLEL LOOP PRIVATE(i,j,k,ii) &
-       !$ACC PRESENT(f_out, work) PRESENT(nxr_pe, nxl_pe) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(f_out, work) PRESENT(nxr_pe, nxl_pe) IF(enable_openacc)
 #endif
        !$OMP DO
        DO  k = nzb_x_diffnz, nzt_x_diffnz
@@ -1515,7 +1515,7 @@
     ENDDO
     !$OMP END PARALLEL
 
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
     !$ACC END DATA
 #endif
     DEALLOCATE(work)
@@ -1636,9 +1636,9 @@
 !-- Rearrange indices of input array in order to make data to be send by MPI contiguous.
     !$OMP PARALLEL PRIVATE ( i, j, k, l, jj )
     !$OMP DO
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
     !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i,j,k,l,jj) &
-    !$ACC PRESENT(f_out, f_inv) PRESENT(nyn_z_pe, nys_z_pe) DEFAULT(NONE) IF(enable_openacc)
+    !$ACC PRESENT(f_out, f_inv) PRESENT(nyn_z_pe, nys_z_pe) IF(enable_openacc)
 #endif
     DO  k = nzb_y, nzt_y
        DO  i = nxl_y, nxr_y
@@ -1705,7 +1705,7 @@
     REAL(wp), ALLOCATABLE, DIMENSION(:,:,:,:) ::  work  !<
 
     ALLOCATE(work(nxl_z:nxr_z,nnz_z_max,nys_z:nyn_z_max,0:npex-1))
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
     !$ACC DATA CREATE(work) IF(enable_openacc)
 #endif
 #endif
@@ -1722,9 +1722,9 @@
        IF ( non_uniform_data_for_transpose )  THEN
 
           !$OMP PARALLEL PRIVATE ( i, j, k, l, kk )
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
           !$ACC PARALLEL LOOP PRIVATE(i,j,k,l,kk) &
-          !$ACC PRESENT(f_in, work) PRESENT(nzb_x_pe, nzt_x_pe) DEFAULT(NONE) IF(enable_openacc)
+          !$ACC PRESENT(f_in, work) PRESENT(nzb_x_pe, nzt_x_pe) IF(enable_openacc)
 #endif
           !$OMP DO
           DO  j = nys_z, nyn_z
@@ -1745,7 +1745,7 @@
           !$OMP PARALLEL PRIVATE ( i, j, k, l, zs )
           DO  l = 0, npex - 1
              zs = 1 + l * ( nzt_y - nzb_y + 1 )
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
              !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i,j,k) &
              !$ACC PRESENT(work, f_in) IF(enable_openacc)
 #endif
@@ -1766,7 +1766,7 @@
 !--    Transpose array
        CALL cpu_log( log_point_s(32), 'mpi_alltoall', 'start', cpu_log_nowait )
 
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
        !$ACC HOST_DATA USE_DEVICE(work, f_inv) IF(enable_openacc)
 #endif
 
@@ -1774,7 +1774,7 @@
        CALL MPI_ALLTOALL( work(nxl_z,1,nys_z,0), sendrecvcount_yz, MPI_REAL,                       &
                           f_inv(nxl_y,nzb_y,0),  sendrecvcount_yz, MPI_REAL, comm1dx, ierr )
 
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
        !$ACC END HOST_DATA
 #endif
 
@@ -1786,9 +1786,9 @@
 !--    Reorder the array in the same way like ALLTOALL did it
        !$OMP PARALLEL PRIVATE ( i, j, k )
        !$OMP DO
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i,j,k) &
-       !$ACC PRESENT(f_inv, f_in) DEFAULT(NONE) IF(enable_openacc)
+       !$ACC PRESENT(f_inv, f_in) IF(enable_openacc)
 #endif
        DO  k = nzb_y, nzt_y
           DO  j = 0, ny
@@ -1802,7 +1802,7 @@
     ENDIF
 
 #if defined( __parallel )
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
     !$ACC END DATA
 #endif
     DEALLOCATE(work)

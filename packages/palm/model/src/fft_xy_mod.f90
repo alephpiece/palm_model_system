@@ -46,7 +46,7 @@
                ny,                                                                                 &
                nz
 
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
     USE ISO_C_BINDING
 #elif defined( __fftw )
     USE, INTRINSIC ::  ISO_C_BINDING
@@ -92,7 +92,9 @@
     REAL(wp), DIMENSION(:), ALLOCATABLE, SAVE ::  trigs_x  !<
     REAL(wp), DIMENSION(:), ALLOCATABLE, SAVE ::  trigs_y  !<
 
-#if defined( __cuda_fft )
+#if defined( __hip_fft )
+    TYPE(C_PTR), SAVE :: plan_xf, plan_xi, plan_yf, plan_yi
+#elif defined( __cuda_fft )
     INTEGER(C_INT), SAVE ::  plan_xf  !<
     INTEGER(C_INT), SAVE ::  plan_xi  !<
     INTEGER(C_INT), SAVE ::  plan_yf  !<
@@ -185,8 +187,14 @@
           init_fft = .TRUE.
        ENDIF
 
-#if defined( __cuda_fft )
-       IF ( enable_openacc )  fft_method = 'system-specific'
+#if defined( __cuda_fft ) || defined( __hip_fft )
+       IF ( enable_openacc )  THEN
+          fft_method = 'system-specific'
+       ELSEIF ( fft_method == 'system-specific' )  THEN
+          message_string = 'system-specific GPU FFT requires enable_openacc = .TRUE.; ' // &
+                           'select a CPU FFT method for host execution'
+          CALL message( 'fft_init', 'PAC0202', 1, 2, 0, 6, 0 )
+       ENDIF
 #endif
 
 !
@@ -208,7 +216,7 @@
           sqr_dnx = SQRT( dnx )
           sqr_dny = SQRT( dny )
 
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
           CALL cpu_log( log_point_s(108), 'cuda_fft_init', 'start' )
 #if defined( __single_precision )
           CALL CUFFTPLAN1D( plan_xf, nx+1, CUFFT_R2C, (nyn_x-nys_x+1) * (nzt_x-nzb_x+1) )
@@ -441,7 +449,7 @@
        REAL(wp), DIMENSION(0:nx,nys_x:nyn_x,nzb_x:nzt_x)                     ::  ar       !<
        REAL(wp), DIMENSION(nys_x:nyn_x_max,nzb_x:nzt_x,0:nx_y_max), OPTIONAL ::  ar_inv   !<
 
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
        COMPLEX(wp), ALLOCATABLE, DIMENSION(:,:,:) :: ar_tmp
 
        ALLOCATE(ar_tmp(0:(nx+1)/2,nys_x:nyn_x,nzb_x:nzt_x))
@@ -901,7 +909,7 @@
 
        ELSEIF ( fft_method == 'system-specific' )  THEN
 
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
 
           IF ( forward_fft )  THEN
 
@@ -914,7 +922,7 @@
              !$ACC END HOST_DATA
 
              !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i,j,k) &
-             !$ACC PRESENT(ar, ar_tmp) DEFAULT(NONE) IF(enable_openacc)
+             !$ACC PRESENT(ar, ar_tmp) IF(enable_openacc)
              DO  k = nzb_x, nzt_x
                 DO  j = nys_x, nyn_x
 
@@ -932,7 +940,7 @@
           ELSE
 
              !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i,j,k) &
-             !$ACC PRESENT(ar, ar_tmp) DEFAULT(NONE) IF(enable_openacc)
+             !$ACC PRESENT(ar, ar_tmp) IF(enable_openacc)
              DO  k = nzb_x, nzt_x
                 DO  j = nys_x, nyn_x
 
@@ -960,7 +968,7 @@
 
        ENDIF
 
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
        !$ACC END DATA
        DEALLOCATE(ar_tmp)
 #endif
@@ -1243,7 +1251,7 @@
 
        COMPLEX(wp), DIMENSION(:), ALLOCATABLE ::  cwork  !<
 
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
        COMPLEX(wp), ALLOCATABLE, DIMENSION(:,:,:) ::  ar_tmp  !<
 
        ALLOCATE(ar_tmp(0:(ny+1)/2,nxl_y:nxr_y,nzb_y:nzt_y))
@@ -1721,7 +1729,7 @@
 
        ELSEIF ( fft_method == 'system-specific' )  THEN
 
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
 
           IF ( forward_fft )  THEN
 
@@ -1734,7 +1742,7 @@
              !$ACC END HOST_DATA
 
              !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i,j,k) &
-             !$ACC PRESENT(ar, ar_tmp) DEFAULT(NONE) IF(enable_openacc)
+             !$ACC PRESENT(ar, ar_tmp) IF(enable_openacc)
              DO  k = nzb_y, nzt_y
                 DO  i = nxl_y, nxr_y
 
@@ -1752,7 +1760,7 @@
           ELSE
 
              !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i,j,k) &
-             !$ACC PRESENT(ar, ar_tmp) DEFAULT(NONE) IF(enable_openacc)
+             !$ACC PRESENT(ar, ar_tmp) IF(enable_openacc)
              DO  k = nzb_y, nzt_y
                 DO  i = nxl_y, nxr_y
 
@@ -1780,7 +1788,7 @@
 
        ENDIF
 
-#if defined( __cuda_fft )
+#if defined( __cuda_fft ) || defined( __hip_fft )
        !$ACC END DATA
        DEALLOCATE(ar_tmp)
 #endif
