@@ -1,11 +1,9 @@
 # Building and running on BW-series DCUs with DTK 26.04
 
-This directory provides an OpenACC build template and run instructions for
-BW-series DCUs with DTK 26.04, including GPU optimizations and hipFFT support.
-Run the commands directly inside a container with the required software stack
-installed, and use `enable_openacc = .TRUE.` for GPU execution.
-Adjust paths and the target architecture to match your installation
-and DCU model.
+This directory contains an OpenACC build template for BW-series DCUs with
+DTK 26.04, GPU optimizations, and hipFFT support. Run the commands below inside
+your container. Adjust the paths and target architecture for your installation,
+and set `enable_openacc = .TRUE.` in the case input to run on the GPU.
 
 ## 1. Prepare the environment
 
@@ -15,8 +13,7 @@ GCC, make, Python 3, and Bash.
 
 The template defaults to BW100 (`gfx936`). For other BW models, update
 `--offload-arch` in both the compiler and linker options to match the device.
-Adjust the example installation paths below in the template and environment
-variables as needed.
+Use your installation paths in the template and environment variables:
 
 | Software | Example installation path |
 | --- | --- |
@@ -41,10 +38,10 @@ installation and execution environment.
 
 ## 2. Configure and build
 
-Choose a writable source directory and a new build directory, using absolute
-paths without spaces. Keep the source directory available during runs. Use the
-repository's `palmbuild` and `palmrun` directly; there is no need to run `install`
-first, which would build the generic default configuration.
+Use a writable source directory and a new build directory, both with absolute
+paths without spaces. Keep the source directory available during runs.
+Run the repository's `palmbuild` and `palmrun` directly; skip `install`, which
+builds the generic default configuration.
 
 ```bash
 export PALM_SOURCE=/path/to/palm_model_system
@@ -108,41 +105,51 @@ frequencies.
 
 ## 4. Run
 
-For one GPU and one MPI rank, keep the template's execution command and run
+The examples below run on one server with `OMP_NUM_THREADS=8`:
+
+| Option | Value |
+| --- | --- |
+| `-O` | OMP threads per MPI rank |
+| `-X` | Total MPI ranks × OMP threads per rank |
+| `-T` | MPI ranks per node |
+| `-w` | Maximum parallel I/O streams |
+
+`-O` sets `OMP_NUM_THREADS`. Configure CPU binding through Open MPI and GPU
+assignment as shown below. `-X` does not reserve or bind CPUs.
+
+For one GPU and one MPI rank, keep the template's launch command and run
 from the build directory:
 
 ```bash
 export HIP_VISIBLE_DEVICES=0
-palmrun -r test -c dcu -a 'd3#' -X 1 -v -z
+palmrun -r test -c dcu -a 'd3#' -X 8 -T 1 -O 8 -w 1 -v -z
 ```
 
 For two GPUs and four MPI ranks, set both `npex` and `npey` to 2 in the input.
-**Replace** `%execute_command` in `.palm.config.dcu` with the following line,
-substituting your source directory for `/absolute/path/to/palm`:
+Replace `%execute_command` with the line below, using your source directory
+in place of `/absolute/path/to/palm`:
 
 ```text
-%execute_command env OMP_NUM_THREADS=8 /opt/mpi-flang/bin/mpirun --allow-run-as-root --mca coll ^hcoll -n {{mpi_tasks}} /absolute/path/to/palm/packages/palm/model/share/config/dtk26.04/rank-gpu.sh ./palm
+%execute_command /opt/mpi-flang/bin/mpirun --allow-run-as-root --mca coll ^hcoll -n {{mpi_tasks}} /absolute/path/to/palm/packages/palm/model/share/config/dtk26.04/rank-gpu.sh ./palm
 ```
 
 ```bash
 export HIP_VISIBLE_DEVICES=0,1
-palmrun -r test -c dcu -a 'd3#' -X 4 -v -z
+palmrun -r test -c dcu -a 'd3#' -X 32 -T 4 -O 8 -w 4 -v -z
 ```
 
 `rank-gpu.sh` requires four Open MPI ranks on a single node. It assigns ranks
 0 and 2 to the first GPU, and ranks 1 and 3 to the second. Each rank sees one GPU
-before MPI initialization; this is the count shown by `ACC-devices per node: 1`.
-Set CPU affinity through Open MPI to match the CPUs available inside the
-container and the NUMA layout.
+before MPI initialization, so PALM reports `ACC-devices per node: 1`.
+Choose CPU bindings that match the container's available CPUs and NUMA layout.
 
-The template explicitly sets `OMP_NUM_THREADS=8` before `mpirun` to override the
-default value of 1 set by `palmrun` when `-O` is not used. With DTK 26.04, this
-variable can also affect GPU kernels without an explicit parallel width, so
-include it in performance tuning.
+The launcher and rank scripts must preserve the `OMP_NUM_THREADS` value set
+by `-O`. In DTK 26.04, this value also affects the default width of some OpenACC
+kernels. Keep `-O` fixed when comparing CPU bindings. It does not enable
+source-level OpenMP or set `OMP_NUM_THREADS_OFFLOAD`.
 
-Keep the template's `%execute_command_for_combine` for output merging. It
-launches one process directly, independently of the four-rank GPU assignment
-script.
+The template runs output merging separately with one MPI rank and
+`OMP_NUM_THREADS=1`.
 
 ## 5. Check the configuration and results
 
@@ -151,8 +158,8 @@ script.
 - `test_header.*` should report the selected solver and process decomposition. In `test_cpu.*`, the FFT path appears as `poisfft` and the MG path as `poismg`.
 - Check the run status, final simulation time, and numerical output in `JOBS/test/OUTPUT/`.
 
-The template enables the optimization macros grouped below. See `%cpp_options`
-for the complete list passed to the compiler.
+The template enables the following optimizations. The full compiler macro list
+is in `%cpp_options`.
 
 | Computation | Enabled macros |
 | --- | --- |
@@ -166,7 +173,7 @@ for the complete list passed to the compiler.
 
 ### FFT execution controls
 
-For GPU FFT execution, the template also enables these controls:
+The template also enables these GPU FFT controls:
 
 | Control | Effect |
 | --- | --- |

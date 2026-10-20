@@ -25,8 +25,8 @@
 %compiler_options -O2 -fopenacc --offload-arch=gfx936 -I/opt/netcdf-fortran-flang/include
 %linker_options_rrtmg -O2 -L/opt/netcdf-fortran-flang/lib -lnetcdff -L/opt/netcdf-parallel/lib -lnetcdf -Wl,-rpath,/opt/mpi-flang/lib -Wl,-rpath,/opt/netcdf-fortran-flang/lib -Wl,-rpath,/opt/netcdf-parallel/lib
 %linker_options -L/opt/dtk-26.04/hipfft/lib -lhipfft -lamdhip64 -Wl,-rpath,/opt/dtk-26.04/hipfft/lib -O2 -fopenacc --offload-arch=gfx936 -I/opt/netcdf-fortran-flang/include -L/opt/netcdf-fortran-flang/lib -lnetcdff -L/opt/netcdf-parallel/lib -lnetcdf -Wl,-rpath,/opt/mpi-flang/lib -Wl,-rpath,/opt/netcdf-fortran-flang/lib -Wl,-rpath,/opt/netcdf-parallel/lib
-%execute_command env OMP_NUM_THREADS=8 /opt/mpi-flang/bin/mpirun --allow-run-as-root --mca coll ^hcoll -n {{mpi_tasks}} ./palm
-%execute_command_for_combine /opt/mpi-flang/bin/mpirun --allow-run-as-root --mca coll ^hcoll -n 1 ./combine_plot_fields.x
+%execute_command /opt/mpi-flang/bin/mpirun --allow-run-as-root --mca coll ^hcoll -n {{mpi_tasks}} ./palm
+%execute_command_for_combine env OMP_NUM_THREADS=1 /opt/mpi-flang/bin/mpirun --allow-run-as-root --mca coll ^hcoll -n 1 ./combine_plot_fields.x
 IC:ulimit  -s unlimited
 EC:[[ $locat = execution ]]  &&  cat  RUN_CONTROL
 OC:[[ -f LIST_PROFIL_1D     ]]  &&  cat  LIST_PROFIL_1D  >>  LIST_PROFILE
