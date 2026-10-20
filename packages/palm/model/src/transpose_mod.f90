@@ -232,6 +232,9 @@
        !$OMP  DO
 #if defined( __cuda_fft ) || defined( __hip_fft )
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i,j,k) &
+#if defined( PALM_FFT_TRANSPOSE_VECTOR64_REST )
+       !$ACC VECTOR_LENGTH(64) &
+#endif
        !$ACC PRESENT(f_inv, f_in) IF(enable_openacc)
 #endif
        DO  k = nzb_x, nzt_x
@@ -374,6 +377,9 @@
        !$OMP  DO
 #if defined( __cuda_fft ) || defined( __hip_fft )
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i,j,k) &
+#if defined( PALM_FFT_TRANSPOSE_VECTOR64_REST )
+       !$ACC VECTOR_LENGTH(64) &
+#endif
        !$ACC PRESENT(f_out, f_inv) IF(enable_openacc)
 #endif
        DO  k = nzb_y, nzt_y
@@ -459,6 +465,9 @@
        !$OMP  DO
 #if defined( __cuda_fft ) || defined( __hip_fft )
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i,j,k) &
+#if defined( PALM_FFT_TRANSPOSE_VECTOR64 )
+       !$ACC VECTOR_LENGTH(64) &
+#endif
        !$ACC PRESENT(f_out, f_inv) IF(enable_openacc)
 #endif
        DO  i = nxl, nxr
@@ -632,6 +641,9 @@
        !$OMP DO
 #if defined( __cuda_fft ) || defined( __hip_fft )
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i,j,k) &
+#if defined( PALM_FFT_TRANSPOSE_VECTOR64 )
+       !$ACC VECTOR_LENGTH(64) &
+#endif
        !$ACC PRESENT(f_inv, f_in) IF(enable_openacc)
 #endif
        DO  i = nxl, nxr
@@ -713,6 +725,9 @@
        !$OMP DO
 #if defined( __cuda_fft ) || defined( __hip_fft )
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i,j,k) &
+#if defined( PALM_FFT_TRANSPOSE_VECTOR64_REST )
+       !$ACC VECTOR_LENGTH(64) &
+#endif
        !$ACC PRESENT(f_out, f_inv) IF(enable_openacc)
 #endif
        DO  k = nzb_x, nzt_x
@@ -857,6 +872,9 @@
        !$OMP DO
 #if defined( __cuda_fft ) || defined( __hip_fft )
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i,j,k) &
+#if defined( PALM_FFT_TRANSPOSE_VECTOR64_REST )
+       !$ACC VECTOR_LENGTH(64) &
+#endif
        !$ACC PRESENT(f_inv, f_in) IF(enable_openacc)
 #endif
        DO  i = nxl_y, nxr_y
@@ -996,6 +1014,9 @@
        !$OMP DO
 #if defined( __cuda_fft ) || defined( __hip_fft )
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i,j,k) &
+#if defined( PALM_FFT_TRANSPOSE_VECTOR64_REST )
+       !$ACC VECTOR_LENGTH(64) &
+#endif
        !$ACC PRESENT(f_out, f_inv) IF(enable_openacc)
 #endif
        DO  j = 0, ny
@@ -1147,6 +1168,9 @@
        !$OMP DO
 #if defined( __cuda_fft ) || defined( __hip_fft )
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i,j,k) &
+#if defined( PALM_FFT_TRANSPOSE_VECTOR64 )
+       !$ACC VECTOR_LENGTH(64) &
+#endif
        !$ACC PRESENT(f_in, f_inv) IF(enable_openacc)
 #endif
        DO  i = nxl, nxr
@@ -1298,6 +1322,9 @@
        !$OMP DO
 #if defined( __cuda_fft ) || defined( __hip_fft )
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i,j,k) &
+#if defined( PALM_FFT_TRANSPOSE_VECTOR64 )
+       !$ACC VECTOR_LENGTH(64) &
+#endif
        !$ACC PRESENT(f_out, f_inv) IF(enable_openacc)
 #endif
        DO  k = 1, nz
@@ -1788,6 +1815,9 @@
        !$OMP DO
 #if defined( __cuda_fft ) || defined( __hip_fft )
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i,j,k) &
+#if defined( PALM_FFT_TRANSPOSE_VECTOR64_REST )
+       !$ACC VECTOR_LENGTH(64) &
+#endif
        !$ACC PRESENT(f_inv, f_in) IF(enable_openacc)
 #endif
        DO  k = nzb_y, nzt_y

@@ -162,6 +162,18 @@
 
     IMPLICIT NONE
 
+#if ( defined( PALM_FFT_LOCAL_ZX_FUSION ) || defined( PALM_FFT_LOCAL_MIDDLE_FUSION ) ) && \
+    defined( _OPENACC ) && ( defined( __cuda_fft ) || defined( __hip_fft ) )
+    INTEGER(iwp) ::  i, j, k            !< local permutation indices
+#endif
+#if defined( PALM_FFT_LOCAL_ZX_FUSION ) && defined( _OPENACC ) && \
+    ( defined( __cuda_fft ) || defined( __hip_fft ) )
+    LOGICAL ::  use_local_zx_fusion     !< uniform single-rank GPU FFT fast path
+#endif
+#if defined( PALM_FFT_LOCAL_MIDDLE_FUSION ) && defined( _OPENACC ) && \
+    ( defined( __cuda_fft ) || defined( __hip_fft ) )
+    LOGICAL ::  use_local_middle_fusion !< uniform single-rank intermediate permutations
+#endif
     REAL(wp), DIMENSION(1:nz,nys:nyn,nxl:nxr) ::  ar      !<
 
     REAL(wp), DIMENSION(:,:,:),   ALLOCATABLE ::  xy_in    !<
@@ -175,6 +187,16 @@
     IF ( .NOT. poisfft_initialized )  CALL poisfft_init
 
     CALL cpu_log( log_point_s(3), 'poisfft', 'start' )
+#if defined( PALM_FFT_LOCAL_ZX_FUSION ) && defined( _OPENACC ) && \
+    ( defined( __cuda_fft ) || defined( __hip_fft ) )
+    use_local_zx_fusion = enable_openacc .AND. numprocs == 1 .AND.                            &
+                         .NOT. non_uniform_data_for_transpose .AND. .NOT. temperton_fft_vec
+#endif
+#if defined( PALM_FFT_LOCAL_MIDDLE_FUSION ) && defined( _OPENACC ) && \
+    ( defined( __cuda_fft ) || defined( __hip_fft ) )
+    use_local_middle_fusion = enable_openacc .AND. numprocs == 1 .AND.                        &
+                             .NOT. non_uniform_data_for_transpose .AND. .NOT. temperton_fft_vec
+#endif
 
 #if ! defined( __cuda_fft ) && ! defined( __hip_fft )
     !$ACC UPDATE HOST(ar) IF(enable_openacc)
@@ -193,10 +215,30 @@
 !-- 2d-domain-decomposition or no decomposition (1 PE run).
 !-- Transposition z --> x
     CALL cpu_log( log_point_s(5), 'transpo forward', 'start' )
+#if defined( PALM_FFT_LOCAL_ZX_FUSION ) && defined( _OPENACC ) && \
+    ( defined( __cuda_fft ) || defined( __hip_fft ) )
+    IF ( use_local_zx_fusion )  THEN
+!
+!--    Compose the two local permutations; no other stage consumes zx_in on this path.
+       !$ACC PARALLEL LOOP COLLAPSE(3) VECTOR_LENGTH(64) PRIVATE(i,j,k) &
+       !$ACC PRESENT(zx_out, ar) IF(enable_openacc)
+       DO  k = 1, nz
+          DO  i = nxl, nxr
+             DO  j = nys, nyn
+                zx_out(i,j,k) = ar(k,j,i)
+             ENDDO
+          ENDDO
+       ENDDO
+    ELSE
+#endif
     CALL resort_for_zx( ar, zx_in )
 !
 !-- In case of temperton_fft_vec, zx_out is bypassed by f_vec_x.
     CALL transpose_zx( zx_in, zx_out )
+#if defined( PALM_FFT_LOCAL_ZX_FUSION ) && defined( _OPENACC ) && \
+    ( defined( __cuda_fft ) || defined( __hip_fft ) )
+    ENDIF
+#endif
     CALL cpu_log( log_point_s(5), 'transpo forward', 'pause' )
 
     CALL cpu_log( log_point_s(4), 'fft_x', 'start' )
@@ -213,10 +255,30 @@
 !
 !-- Transposition x --> y.
     CALL cpu_log( log_point_s(5), 'transpo forward', 'continue' )
+#if defined( PALM_FFT_LOCAL_MIDDLE_FUSION ) && defined( _OPENACC ) && \
+    ( defined( __cuda_fft ) || defined( __hip_fft ) )
+    IF ( use_local_middle_fusion )  THEN
+!
+!--    Compose the local permutations; no other stage consumes xy_in on this path.
+       !$ACC PARALLEL LOOP COLLAPSE(3) VECTOR_LENGTH(64) PRIVATE(i,j,k) &
+       !$ACC PRESENT(xy_out, zx_out) IF(enable_openacc)
+       DO  k = nzb_y, nzt_y
+          DO  i = nxl_y, nxr_y
+             DO  j = 0, ny
+                xy_out(j,i,k) = zx_out(i,j,k)
+             ENDDO
+          ENDDO
+       ENDDO
+    ELSE
+#endif
     IF ( .NOT. temperton_fft_vec  .OR.  non_uniform_data_for_transpose )  THEN
        CALL resort_for_xy( zx_out, xy_in )
     ENDIF
     CALL transpose_xy( xy_in, xy_out )
+#if defined( PALM_FFT_LOCAL_MIDDLE_FUSION ) && defined( _OPENACC ) && \
+    ( defined( __cuda_fft ) || defined( __hip_fft ) )
+    ENDIF
+#endif
     CALL cpu_log( log_point_s(5), 'transpo forward', 'pause' )
 
     CALL cpu_log( log_point_s(7), 'fft_y', 'start' )
@@ -240,10 +302,30 @@
 !
 !-- Transposition y --> z.
     CALL cpu_log( log_point_s(5), 'transpo forward', 'continue' )
+#if defined( PALM_FFT_LOCAL_MIDDLE_FUSION ) && defined( _OPENACC ) && \
+    ( defined( __cuda_fft ) || defined( __hip_fft ) )
+    IF ( use_local_middle_fusion )  THEN
+!
+!--    Compose the local permutations; no other stage consumes yz_in on this path.
+       !$ACC PARALLEL LOOP COLLAPSE(3) VECTOR_LENGTH(64) PRIVATE(i,j,k) &
+       !$ACC PRESENT(yz_out, xy_out) IF(enable_openacc)
+       DO  j = 0, ny
+          DO  k = nzb_y, nzt_y
+             DO  i = nxl_y, nxr_y
+                yz_out(i,j,k) = xy_out(j,i,k)
+             ENDDO
+          ENDDO
+       ENDDO
+    ELSE
+#endif
     IF ( .NOT. temperton_fft_vec  .OR.  non_uniform_data_for_transpose )  THEN
        CALL resort_for_yz( xy_out, yz_in )
     ENDIF
     CALL transpose_yz( yz_in, yz_out )
+#if defined( PALM_FFT_LOCAL_MIDDLE_FUSION ) && defined( _OPENACC ) && \
+    ( defined( __cuda_fft ) || defined( __hip_fft ) )
+    ENDIF
+#endif
     CALL cpu_log( log_point_s(5), 'transpo forward', 'stop' )
 
 !
@@ -256,12 +338,30 @@
 !-- Inverse Fourier Transformation.
 !-- Transposition z --> y.
     CALL cpu_log( log_point_s(8), 'transpo invers', 'start' )
+#if defined( PALM_FFT_LOCAL_MIDDLE_FUSION ) && defined( _OPENACC ) && \
+    ( defined( __cuda_fft ) || defined( __hip_fft ) )
+    IF ( use_local_middle_fusion )  THEN
+       !$ACC PARALLEL LOOP COLLAPSE(3) VECTOR_LENGTH(64) PRIVATE(i,j,k) &
+       !$ACC PRESENT(xy_out, yz_out) IF(enable_openacc)
+       DO  k = nzb_y, nzt_y
+          DO  i = nxl_y, nxr_y
+             DO  j = 0, ny
+                xy_out(j,i,k) = yz_out(i,j,k)
+             ENDDO
+          ENDDO
+       ENDDO
+    ELSE
+#endif
     CALL transpose_zy( yz_out, yz_in )
 !
 !-- The fft_y below (vector branch) can directly process ar_inv (i.e. does not require a resorting).
     IF ( .NOT. temperton_fft_vec  .OR. non_uniform_data_for_transpose )  THEN
        CALL resort_for_zy( yz_in, xy_out )
     ENDIF
+#if defined( PALM_FFT_LOCAL_MIDDLE_FUSION ) && defined( _OPENACC ) && \
+    ( defined( __cuda_fft ) || defined( __hip_fft ) )
+    ENDIF
+#endif
     CALL cpu_log( log_point_s(8), 'transpo invers', 'pause' )
 
     CALL cpu_log( log_point_s(7), 'fft_y', 'continue' )
@@ -280,10 +380,28 @@
 !
 !-- Transposition y --> x.
     CALL cpu_log( log_point_s(8), 'transpo invers', 'continue' )
+#if defined( PALM_FFT_LOCAL_MIDDLE_FUSION ) && defined( _OPENACC ) && \
+    ( defined( __cuda_fft ) || defined( __hip_fft ) )
+    IF ( use_local_middle_fusion )  THEN
+       !$ACC PARALLEL LOOP COLLAPSE(3) VECTOR_LENGTH(64) PRIVATE(i,j,k) &
+       !$ACC PRESENT(zx_out, xy_out) IF(enable_openacc)
+       DO  k = nzb_x, nzt_x
+          DO  j = nys_x, nyn_x
+             DO  i = 0, nx
+                zx_out(i,j,k) = xy_out(j,i,k)
+             ENDDO
+          ENDDO
+       ENDDO
+    ELSE
+#endif
     CALL transpose_yx( xy_out, xy_in )
     IF ( .NOT. temperton_fft_vec  .OR.  non_uniform_data_for_transpose )  THEN
        CALL resort_for_yx( xy_in, zx_out )
     ENDIF
+#if defined( PALM_FFT_LOCAL_MIDDLE_FUSION ) && defined( _OPENACC ) && \
+    ( defined( __cuda_fft ) || defined( __hip_fft ) )
+    ENDIF
+#endif
     CALL cpu_log( log_point_s(8), 'transpo invers', 'pause' )
 
     CALL cpu_log( log_point_s(4), 'fft_x', 'continue' )
@@ -298,8 +416,26 @@
 !
 !-- Transposition x --> z.
     CALL cpu_log( log_point_s(8), 'transpo invers', 'continue' )
+#if defined( PALM_FFT_LOCAL_ZX_FUSION ) && defined( _OPENACC ) && \
+    ( defined( __cuda_fft ) || defined( __hip_fft ) )
+    IF ( use_local_zx_fusion )  THEN
+       !$ACC PARALLEL LOOP COLLAPSE(3) VECTOR_LENGTH(64) PRIVATE(i,j,k) &
+       !$ACC PRESENT(ar, zx_out) IF(enable_openacc)
+       DO  i = nxl, nxr
+          DO  j = nys, nyn
+             DO  k = 1, nz
+                ar(k,j,i) = zx_out(i,j,k)
+             ENDDO
+          ENDDO
+       ENDDO
+    ELSE
+#endif
     CALL transpose_xz( zx_out, zx_in )
     CALL resort_for_xz( zx_in, ar )
+#if defined( PALM_FFT_LOCAL_ZX_FUSION ) && defined( _OPENACC ) && \
+    ( defined( __cuda_fft ) || defined( __hip_fft ) )
+    ENDIF
+#endif
     CALL cpu_log( log_point_s(8), 'transpo invers', 'stop' )
 
     !$ACC END DATA

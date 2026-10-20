@@ -163,3 +163,25 @@ for the complete list passed to the compiler.
 | Perturbation-energy mapping and TKE shear terms | `PALM_FLOW_ENERGY_MAPPING`, `PALM_TKE_SHEAR_DIAGONAL`, `PALM_TKE_SHEAR_VECTOR64` |
 | Equation vector width and humidity update | `PALM_EQUATION_VECTOR64`, `PALM_Q_UPDATE_COLLAPSE3` |
 | GPU FFT | `__hip_fft`, linked with hipFFT; do not enable `__cuda_fft` or `__fftw` at the same time |
+
+### FFT execution controls
+
+For GPU FFT execution, the template also enables these controls:
+
+| Control | Effect |
+| --- | --- |
+| `PALM_FFT_TRANSPOSE_VECTOR64`, `PALM_FFT_TRANSPOSE_VECTOR64_REST` | Select `VECTOR_LENGTH(64)` for ten three-dimensional permutation loops. |
+| `PALM_FFT_LOCAL_ZX_FUSION` | Combine the first and last permutation chains. |
+| `PALM_FFT_LOCAL_MIDDLE_FUSION` | Combine the intermediate XY/YZ permutation chains in both directions. |
+| `PALM_FFT_PACK_VECTOR64` | Map independent FFT batches to gangs and spectrum conversion loops to vectors of length 64. |
+| `PALM_TRIDIA_VECTOR64` | Select `VECTOR_LENGTH(64)` across independent horizontal columns in the GPU tridiagonal substitution kernel. |
+
+Both fusion controls apply to single-rank GPU FFT with uniform decomposition
+outside the Temperton vector path. Other configurations keep the original calls.
+The spectrum-conversion control applies to the GPU system-specific FFT path.
+The tridiagonal control applies to the OpenACC GPU FFT path and changes the
+parallel width across columns; substitution remains sequential within each
+column. The CPU fallback is unchanged.
+
+Remove the corresponding `-D` options and rebuild in a new directory to disable
+them. These controls do not change the FFT library or MPI decomposition.

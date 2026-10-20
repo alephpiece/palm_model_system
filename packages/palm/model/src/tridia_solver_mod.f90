@@ -297,7 +297,11 @@
 #if defined( __cuda_fft ) || defined( __hip_fft )
     IF ( enable_openacc )  THEN
 !      Columns are independent; the forward and backward recurrences remain sequential within each.
+#if defined( PALM_TRIDIA_VECTOR64 ) && defined( _OPENACC )
+       !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(2) VECTOR_LENGTH(64) &
+#else
        !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(2) &
+#endif
        !$ACC PRESENT(ar, ar1, tri, ddzuw) PRIVATE(k)
        DO  j = nys_z, nyn_z
           DO  i = nxl_z, nxr_z

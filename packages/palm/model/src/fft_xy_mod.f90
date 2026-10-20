@@ -921,15 +921,25 @@
 #endif
              !$ACC END HOST_DATA
 
+#if defined( PALM_FFT_PACK_VECTOR64 ) && defined( _OPENACC )
+             !$ACC PARALLEL LOOP GANG COLLAPSE(2) VECTOR_LENGTH(64) &
+#else
              !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i,j,k) &
+#endif
              !$ACC PRESENT(ar, ar_tmp) IF(enable_openacc)
              DO  k = nzb_x, nzt_x
                 DO  j = nys_x, nyn_x
 
+#if defined( PALM_FFT_PACK_VECTOR64 ) && defined( _OPENACC )
+                   !$ACC LOOP VECTOR
+#endif
                    DO  i = 0, (nx+1)/2
                       ar(i,j,k)      = REAL( ar_tmp(i,j,k), KIND=wp )  * dnx
                    ENDDO
 
+#if defined( PALM_FFT_PACK_VECTOR64 ) && defined( _OPENACC )
+                   !$ACC LOOP VECTOR
+#endif
                    DO  i = 1, (nx+1)/2 - 1
                       ar(nx+1-i,j,k) = AIMAG( ar_tmp(i,j,k) ) * dnx
                    ENDDO
@@ -939,13 +949,20 @@
 
           ELSE
 
+#if defined( PALM_FFT_PACK_VECTOR64 ) && defined( _OPENACC )
+             !$ACC PARALLEL LOOP GANG COLLAPSE(2) VECTOR_LENGTH(64) &
+#else
              !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i,j,k) &
+#endif
              !$ACC PRESENT(ar, ar_tmp) IF(enable_openacc)
              DO  k = nzb_x, nzt_x
                 DO  j = nys_x, nyn_x
 
                    ar_tmp(0,j,k) = CMPLX( ar(0,j,k), 0.0_wp, KIND=wp )
 
+#if defined( PALM_FFT_PACK_VECTOR64 ) && defined( _OPENACC )
+                   !$ACC LOOP VECTOR
+#endif
                    DO  i = 1, (nx+1)/2 - 1
                       ar_tmp(i,j,k) = CMPLX( ar(i,j,k), ar(nx+1-i,j,k), KIND=wp )
                    ENDDO
@@ -1741,15 +1758,25 @@
 #endif
              !$ACC END HOST_DATA
 
+#if defined( PALM_FFT_PACK_VECTOR64 ) && defined( _OPENACC )
+             !$ACC PARALLEL LOOP GANG COLLAPSE(2) VECTOR_LENGTH(64) &
+#else
              !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i,j,k) &
+#endif
              !$ACC PRESENT(ar, ar_tmp) IF(enable_openacc)
              DO  k = nzb_y, nzt_y
                 DO  i = nxl_y, nxr_y
 
+#if defined( PALM_FFT_PACK_VECTOR64 ) && defined( _OPENACC )
+                   !$ACC LOOP VECTOR
+#endif
                    DO  j = 0, (ny+1)/2
                       ar(j,i,k)      = REAL( ar_tmp(j,i,k), KIND=wp ) * dny
                    ENDDO
 
+#if defined( PALM_FFT_PACK_VECTOR64 ) && defined( _OPENACC )
+                   !$ACC LOOP VECTOR
+#endif
                    DO  j = 1, (ny+1)/2 - 1
                       ar(ny+1-j,i,k) = AIMAG( ar_tmp(j,i,k) ) * dny
                    ENDDO
@@ -1759,13 +1786,20 @@
 
           ELSE
 
+#if defined( PALM_FFT_PACK_VECTOR64 ) && defined( _OPENACC )
+             !$ACC PARALLEL LOOP GANG COLLAPSE(2) VECTOR_LENGTH(64) &
+#else
              !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i,j,k) &
+#endif
              !$ACC PRESENT(ar, ar_tmp) IF(enable_openacc)
              DO  k = nzb_y, nzt_y
                 DO  i = nxl_y, nxr_y
 
                    ar_tmp(0,i,k) = CMPLX( ar(0,i,k), 0.0_wp, KIND=wp )
 
+#if defined( PALM_FFT_PACK_VECTOR64 ) && defined( _OPENACC )
+                   !$ACC LOOP VECTOR
+#endif
                    DO  j = 1, (ny+1)/2 - 1
                       ar_tmp(j,i,k) = CMPLX( ar(j,i,k), ar(ny+1-j,i,k), KIND=wp )
                    ENDDO
