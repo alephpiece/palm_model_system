@@ -6,6 +6,8 @@ PALM comes prepackages with the RRTMG [library](lib).
 
 # Installation
 
+Platform-specific build and run instructions: [BW-series DCUs / DTK 26.04](share/config/dtk26.04/README.md).
+
 First make sure to satisfy the **Software Requirements**. On Debian-based Linux Distributions this can be achieved by the following command:
 
 ``` bash
