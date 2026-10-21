@@ -375,12 +375,13 @@
              CALL MPI_WAITALL( 4, req, wait_stat, ierr )
 !
 !--          Unpack north and south boundaries into disjoint ghost layers.
+!--          Receives from MPI_PROC_NULL leave buffers unchanged; preserve those physical boundaries.
              !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
              DO  i = nxl, nxr
                 DO  j = 1, nbgp_local
                    DO  k = nzb, nzt+1
-                      ar(k,nyn+j,i) = recvbuf1(k,i,j)
-                      ar(k,nys-nbgp_local-1+j,i) = recvbuf2(k,i,j)
+                      IF ( north_pe /= MPI_PROC_NULL )  ar(k,nyn+j,i) = recvbuf1(k,i,j)
+                      IF ( south_pe /= MPI_PROC_NULL )  ar(k,nys-nbgp_local-1+j,i) = recvbuf2(k,i,j)
                    ENDDO
                 ENDDO
              ENDDO
