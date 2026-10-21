@@ -12061,6 +12061,10 @@
             WRITE( debug_string, * ) 'Error MPI_WIN_LOCK_ALL2:', ierr, win_gridsurf
             CALL debug_message( debug_string, 'info' )
         ENDIF
+!
+!--     Publish every reverse-index table before any process starts remote reads.
+        CALL MPI_WIN_SYNC( win_gridsurf, ierr )
+        CALL MPI_BARRIER( comm2d, ierr )
     ENDIF
 #endif
 !
