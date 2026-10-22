@@ -1,0 +1,28 @@
+# DTK 26.04 flang CPU build and run configuration.
+# Replace @BUILD_ROOT@ and @SOURCE_ROOT@ with absolute paths, save as
+# <build-root>/.palm.config.cpu, then run palmbuild -c cpu from that directory.
+# Uses MPI without OpenACC or source-level OpenMP; see the adjacent README.md.
+
+%base_directory @BUILD_ROOT@
+%base_data @BUILD_ROOT@/JOBS
+%source_path @SOURCE_ROOT@/packages/palm/model/src
+%user_source_path @BUILD_ROOT@/JOBS/$run_identifier/USER_CODE
+%fast_io_catalog @BUILD_ROOT@/tmp
+%restart_data_path @BUILD_ROOT@/tmp
+%output_data_path @BUILD_ROOT@/JOBS
+%local_jobcatalog @BUILD_ROOT@/JOBS/$run_identifier/LOG_FILES
+%local_ip 127.0.0.1
+%local_hostname localhost
+%local_username root
+%c_compiler_name /usr/bin/gcc
+%compiler_name /opt/mpi-flang/bin/mpifort
+%compiler_name_ser /opt/dtk-26.04/llvm/bin/flang
+%cpp_options -cpp -D__parallel -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__netcdf -D__netcdf4 -D__netcdf4_parallel
+%make_options -j 8
+%c_compiler_options -Ofast -Wno-format -Wno-unused-result
+%compiler_options -O2 -I/opt/netcdf-fortran-flang/include
+%linker_options -O2 -I/opt/netcdf-fortran-flang/include -L/opt/netcdf-fortran-flang/lib -lnetcdff -L/opt/netcdf-parallel/lib -lnetcdf -Wl,-rpath,/opt/mpi-flang/lib -Wl,-rpath,/opt/netcdf-fortran-flang/lib -Wl,-rpath,/opt/netcdf-parallel/lib
+%execute_command /opt/mpi-flang/bin/mpirun --allow-run-as-root --mca coll ^hcoll -n {{mpi_tasks}} ./palm
+%execute_command_for_combine env OMP_NUM_THREADS=1 /opt/mpi-flang/bin/mpirun --allow-run-as-root --mca coll ^hcoll -n 1 ./combine_plot_fields.x
+IC:ulimit -s unlimited
+EC:[[ $locat = execution ]] && cat RUN_CONTROL

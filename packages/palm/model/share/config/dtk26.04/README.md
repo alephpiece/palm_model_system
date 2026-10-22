@@ -4,6 +4,8 @@ This directory contains an OpenACC build template for BW-series DCUs with
 DTK 26.04, GPU optimizations, and hipFFT support. Run the commands below inside
 your container. Adjust the paths and target architecture for your installation,
 and set `enable_openacc = .TRUE.` in the case input to run on the GPU.
+A separate CPU template uses the same flang toolchain and MPI/NetCDF libraries.
+The main walkthrough covers GPU execution. Section 6 describes CPU execution.
 
 ## 1. Prepare the environment
 
@@ -32,33 +34,26 @@ flang --version
 
 Check that the MPI wrapper uses the intended flang compiler and that the
 libraries come from a compatible software stack. In the template,
-`--allow-run-as-root` supports containers running as root; `--mca coll ^hcoll`
-disables the hcoll collective component. Adjust these options for your Open MPI
+`--allow-run-as-root` supports containers running as root. The option
+`--mca coll ^hcoll` disables the hcoll collective component. Adjust these options for your Open MPI
 installation and execution environment.
 
 ## 2. Configure and build
 
 Use a writable source directory and a new build directory, both with absolute
 paths without spaces. Keep the source directory available during runs.
-Run the repository's `palmbuild` and `palmrun` directly; skip `install`, which
-builds the generic default configuration.
+Use the repository's `palmbuild` and `palmrun` directly for this configuration.
+The `install` script builds the generic default configuration.
 
 ```bash
 export PALM_SOURCE=/path/to/palm_model_system
 export PALM_BUILD=/path/to/palm-bw
 export PATH="$PALM_SOURCE/packages/palm/model/bin:$PATH"
 mkdir -p "$PALM_BUILD/JOBS" "$PALM_BUILD/tmp"
-python3 - <<'PY'
-import os
-from pathlib import Path
-source = Path(os.environ['PALM_SOURCE']).resolve()
-build = Path(os.environ['PALM_BUILD']).resolve()
-template = source / 'packages/palm/model/share/config/dtk26.04/.palm.config.dcu.in'
-output = build / '.palm.config.dcu'
-with output.open('x') as stream:
-    stream.write(template.read_text().replace('@SOURCE_ROOT@', str(source))
-                 .replace('@BUILD_ROOT@', str(build)))
-PY
+sed -e "s|@SOURCE_ROOT@|$PALM_SOURCE|g" \
+    -e "s|@BUILD_ROOT@|$PALM_BUILD|g" \
+    "$PALM_SOURCE/packages/palm/model/share/config/dtk26.04/.palm.config.dcu.in" \
+    > "$PALM_BUILD/.palm.config.dcu"
 cd "$PALM_BUILD"
 ```
 
@@ -77,8 +72,8 @@ object files. Switching between MG and FFT in the input does not require a rebui
 
 Place the complete input in `$PALM_BUILD/JOBS/test/INPUT/`. Name the parameter
 file `test_p3d` and provide any external data required by the case, such as
-`test_static` and `test_dynamic`. Here, `test` is an example job name; replace it
-with your actual job name. Example cases are available in
+`test_static` and `test_dynamic`. Use your actual job name
+in place of `test` in the commands and input filenames. Example cases are available in
 `packages/palm/model/tests/cases/`.
 
 Edit the following fields in the case's existing namelists:
@@ -96,8 +91,8 @@ npey = 1,
 ```
 
 For MG, set `psolver = 'multigrid'` and choose the levels, iterations, and residual
-settings for your case. The template enables GPU FFT support through `__hip_fft`;
-`psolver` selects which solver to use. Choose the solver to suit the case's
+settings for your case. The template enables GPU FFT support through `__hip_fft`.
+The input parameter `psolver` selects which solver to use. Choose the solver to suit the case's
 geometry and boundary conditions.
 
 When comparing performance, use the same input, including output formats and
@@ -169,7 +164,7 @@ is in `%cpp_options`.
 | Pressure mean, soil, and TCM | `PALM_PRESSURE_MEAN_SHARDS`, `PALM_SOIL_CONDUCTIVITY_MAPPING`, `PALM_TCM_DIFFUSIVITY_ORGANIZATION` |
 | Perturbation-energy mapping and TKE shear terms | `PALM_FLOW_ENERGY_MAPPING`, `PALM_TKE_SHEAR_DIAGONAL`, `PALM_TKE_SHEAR_VECTOR64` |
 | Equation vector width and humidity update | `PALM_EQUATION_VECTOR64`, `PALM_Q_UPDATE_COLLAPSE3` |
-| GPU FFT | `__hip_fft`, linked with hipFFT; do not enable `__cuda_fft` or `__fftw` at the same time |
+| GPU FFT | `__hip_fft`, linked with hipFFT. Select only one of `__hip_fft`, `__cuda_fft`, and `__fftw`. |
 
 ### FFT execution controls
 
@@ -187,8 +182,61 @@ Both fusion controls apply to single-rank GPU FFT with uniform decomposition
 outside the Temperton vector path. Other configurations keep the original calls.
 The spectrum-conversion control applies to the GPU system-specific FFT path.
 The tridiagonal control applies to the OpenACC GPU FFT path and changes the
-parallel width across columns; substitution remains sequential within each
-column. The CPU fallback is unchanged.
+parallel width across columns while keeping substitution sequential within
+each column. The CPU fallback is unchanged.
 
 Remove the corresponding `-D` options and rebuild in a new directory to disable
 them. These controls do not change the FFT library or MPI decomposition.
+
+## 6. CPU execution
+
+Use `.palm.config.cpu.in` with the flang and MPI/NetCDF environment described in
+section 1. The CPU template uses MPI without OpenACC, GPU FFT libraries, or
+source-level OpenMP. Keep CPU and GPU builds in separate directories.
+
+```bash
+export PALM_SOURCE=/path/to/palm_model_system
+export PALM_BUILD=/path/to/palm-cpu
+export PATH="$PALM_SOURCE/packages/palm/model/bin:$PATH"
+mkdir -p "$PALM_BUILD/JOBS" "$PALM_BUILD/tmp"
+sed -e "s|@SOURCE_ROOT@|$PALM_SOURCE|g" \
+    -e "s|@BUILD_ROOT@|$PALM_BUILD|g" \
+    "$PALM_SOURCE/packages/palm/model/share/config/dtk26.04/.palm.config.cpu.in" \
+    > "$PALM_BUILD/.palm.config.cpu"
+cd "$PALM_BUILD"
+```
+
+Review the dependency paths, `%local_username`, and `%make_options` in
+`.palm.config.cpu`, then build:
+
+```bash
+palmbuild -v -c cpu
+```
+
+The executable is written to `MAKE_DEPOSITORY_cpu/palm`. Place the complete case
+input in `$PALM_BUILD/JOBS/test/INPUT/`, including `test_p3d` and any external
+data files required by the case.
+
+For a four-rank MG run, set the following fields in the existing namelists:
+
+```fortran
+! In &initialization_parameters:
+psolver = 'multigrid',
+
+! In &runtime_parameters:
+enable_openacc = .FALSE.,
+npex = 2,
+npey = 2,
+```
+
+For a CPU/GPU comparison, use MG on both sides with the same solver settings,
+process decomposition, simulation duration, and output schedule. Run from the
+CPU build directory:
+
+```bash
+palmrun -r test -c cpu -a 'd3#' -X 4 -T 4 -O 1 -w 4 -v -z
+```
+
+This launches four MPI ranks with `OMP_NUM_THREADS=1`, using the template's
+ordinary MPI command. Check the run status, solver, process decomposition, and
+output in `JOBS/test/`.
