@@ -299,6 +299,10 @@
            nesting_offl_mass_conservation,                                                         &
            nesting_offl_parin
 
+#if defined( _OPENACC )
+    PUBLIC nesting_offl_copy_to_device
+#endif
+
     INTERFACE nesting_offl_bc
        MODULE PROCEDURE nesting_offl_bc
     END INTERFACE nesting_offl_bc
@@ -1091,6 +1095,11 @@
 
     REAL(wp), DIMENSION(1:3) ::  volume_flow_l   !< local volume flow
 
+#if defined( _OPENACC )
+    LOGICAL ::  lacc  !< fields are device-resident during time integration
+    REAL(wp) ::  flux_left, flux_right, flux_south, flux_north, flux_top
+#endif
+
 
     IF ( debug_output_timestep )  CALL debug_message( 'nesting_offl_mass_conservation', 'start' )
 
@@ -1101,23 +1110,79 @@
 
     d_area_t = 1.0_wp / ( ( nx + 1 ) * dx * ( ny + 1 ) * dy )
 !
-!-- Pull only boundary planes needed for host-side volume-flux sums.
+!-- Initialization precedes the application data region. Keep its host path, and transfer only
+!-- scalar reductions when the velocity fields are already resident on the device.
 #if defined( _OPENACC )
-    IF ( enable_openacc  .AND.  acc_is_present( u ) )  THEN
+    lacc = enable_openacc  .AND.  acc_is_present( u )
+    IF ( lacc )  THEN
+       flux_left  = 0.0_wp
+       flux_right = 0.0_wp
+       flux_south = 0.0_wp
+       flux_north = 0.0_wp
+       flux_top   = 0.0_wp
+
        IF ( bc_dirichlet_l )  THEN
-          !$ACC UPDATE HOST(u(:,:,nxl:nxl))
+          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(2) DEFAULT(PRESENT) &
+          !$ACC PRESENT(u,dzw,rho_air,topo_flags) COPY(flux_left) REDUCTION(+:flux_left) &
+          !$ACC PRIVATE(j,k)
+          DO  j = nys, nyn
+             DO  k = nzb+1, nzt
+                flux_left = flux_left + u(k,j,nxl) * dzw(k) * dy * rho_air(k) &
+                            * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,nxl), 1 ) )
+             ENDDO
+          ENDDO
+          !$ACC END PARALLEL LOOP
        ENDIF
        IF ( bc_dirichlet_r )  THEN
-          !$ACC UPDATE HOST(u(:,:,nxr+1:nxr+1))
+          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(2) DEFAULT(PRESENT) &
+          !$ACC PRESENT(u,dzw,rho_air,topo_flags) COPY(flux_right) REDUCTION(+:flux_right) &
+          !$ACC PRIVATE(j,k)
+          DO  j = nys, nyn
+             DO  k = nzb+1, nzt
+                flux_right = flux_right - u(k,j,nxr+1) * dzw(k) * dy * rho_air(k) &
+                             * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,nxr+1), 1 ) )
+             ENDDO
+          ENDDO
+          !$ACC END PARALLEL LOOP
        ENDIF
        IF ( bc_dirichlet_s )  THEN
-          !$ACC UPDATE HOST(v(:,nys:nys,:))
+          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(2) DEFAULT(PRESENT) &
+          !$ACC PRESENT(v,dzw,rho_air,topo_flags) COPY(flux_south) REDUCTION(+:flux_south) &
+          !$ACC PRIVATE(i,k)
+          DO  i = nxl, nxr
+             DO  k = nzb+1, nzt
+                flux_south = flux_south + v(k,nys,i) * dzw(k) * dx * rho_air(k) &
+                             * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,nys,i), 2 ) )
+             ENDDO
+          ENDDO
+          !$ACC END PARALLEL LOOP
        ENDIF
        IF ( bc_dirichlet_n )  THEN
-          !$ACC UPDATE HOST(v(:,nyn+1:nyn+1,:))
+          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(2) DEFAULT(PRESENT) &
+          !$ACC PRESENT(v,dzw,rho_air,topo_flags) COPY(flux_north) REDUCTION(+:flux_north) &
+          !$ACC PRIVATE(i,k)
+          DO  i = nxl, nxr
+             DO  k = nzb+1, nzt
+                flux_north = flux_north - v(k,nyn+1,i) * dzw(k) * dx * rho_air(k) &
+                             * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,nyn+1,i), 2 ) )
+             ENDDO
+          ENDDO
+          !$ACC END PARALLEL LOOP
        ENDIF
-       !$ACC UPDATE HOST(w(nzt:nzt,:,:))
-    ENDIF
+!
+!--    The original top flux has no topography mask; retain that definition.
+       !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(2) DEFAULT(PRESENT) &
+       !$ACC PRESENT(w,rho_air_zw) COPY(flux_top) REDUCTION(+:flux_top) &
+       !$ACC PRIVATE(i,j)
+       DO  i = nxl, nxr
+          DO  j = nys, nyn
+             flux_top = flux_top - rho_air_zw(nzt) * w(nzt,j,i) * dx * dy
+          ENDDO
+       ENDDO
+       !$ACC END PARALLEL LOOP
+
+       volume_flow_l = (/ flux_left + flux_right, flux_south + flux_north, flux_top /)
+    ELSE
 #endif
 
     IF ( bc_dirichlet_l )  THEN
@@ -1164,6 +1229,9 @@
           volume_flow_l(3) = volume_flow_l(3) - rho_air_zw(k) * w(k,j,i) * dx * dy
        ENDDO
     ENDDO
+#if defined( _OPENACC )
+    ENDIF
+#endif
 
 #if defined( __parallel )
     IF ( collective_wait )  CALL MPI_BARRIER( comm2d, ierr )
@@ -1174,6 +1242,26 @@
 
     w_correct = SUM( volume_flow ) * d_area_t * drho_air_zw(nzt)
 
+#if defined( _OPENACC )
+    IF ( lacc )  THEN
+!
+!--    Correct both owned top layers from their current values. Ghost points remain untouched,
+!--    and the second time level receives the corrected value, including at masked points.
+       !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) DEFAULT(PRESENT) &
+       !$ACC PRESENT(w,w_p,topo_flags) &
+       !$ACC PRIVATE(i,j,k)
+       DO  i = nxl, nxr
+          DO  j = nys, nyn
+             DO  k = nzt, nzt+1
+                w(k,j,i) = w(k,j,i) + w_correct &
+                          * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 3 ) )
+                w_p(k,j,i) = w(k,j,i)
+             ENDDO
+          ENDDO
+       ENDDO
+       !$ACC END PARALLEL LOOP
+    ELSE
+#endif
     DO  i = nxl, nxr
        DO  j = nys, nyn
           DO  k = nzt, nzt + 1
@@ -1183,11 +1271,7 @@
           ENDDO
        ENDDO
     ENDDO
-!
-!-- Push only the corrected top w layers to the device (not the full 3-D fields).
 #if defined( _OPENACC )
-    IF ( enable_openacc  .AND.  acc_is_present( w ) )  THEN
-       !$ACC UPDATE DEVICE(w(nzt:nzt+1,:,:), w_p(nzt:nzt+1,:,:))
     ENDIF
 #endif
 
@@ -2251,7 +2335,7 @@
        v_p(:,nysv-1,:) = v(:,nysv-1,:)
        w_p(:,nys-1,:)  = w(:,nys-1,:)
        IF ( .NOT. neutral )  pt_p(:,nys-1,:) = pt(:,nys-1,:)
-       IF ( humidity )  q_p(:,nys+1,:) = q(:,nys-1,:)
+       IF ( humidity )  q_p(:,nys-1,:) = q(:,nys-1,:)
        DO  n = 1, UBOUND( chem_species, 1 )
           IF ( nest_offl%chem_from_file_t(n) )  THEN
              chem_species(n)%conc_p(:,nys-1,:) = chem_species(n)%conc(:,nys-1,:)
@@ -2283,62 +2367,207 @@
        ENDIF
     ENDDO
 !
-!-- Push only host-updated lateral/top BC planes to the device (avoid full-field UPDATE
-!-- that overwrites GPU interior points and burns PCIe bandwidth).
+!-- Only interpolated points have current host values. The interior, halo points and unchanged
+!-- vertical levels remain device-owned. Perform boundary copies from their device sources below.
 #if defined( _OPENACC )
     IF ( enable_openacc  .AND.  acc_is_present( u ) )  THEN
        IF ( bc_dirichlet_l )  THEN
-          !$ACC UPDATE DEVICE(u(:,:,nxlg:nxl), u_p(:,:,nxlg:nxl),                                  &
-          !$ACC               v(:,:,nxlg:nxl), v_p(:,:,nxlg:nxl),                                  &
-          !$ACC               w(:,:,nxlg:nxl), w_p(:,:,nxlg:nxl))
+          CALL nesting_offl_copy_to_device( u, nzb+1, nzt, nys, nyn, i_bound_l_u, i_bound_l_u )
+          CALL nesting_offl_copy_to_device( v, nzb+1, nzt, nysv, nyn, i_bound_l, i_bound_l )
+          CALL nesting_offl_copy_to_device( w, nzb+1, nzt, nys, nyn, i_bound_l, i_bound_l )
           IF ( .NOT. neutral )  THEN
-             !$ACC UPDATE DEVICE(pt(:,:,nxlg:nxl), pt_p(:,:,nxlg:nxl))
+             CALL nesting_offl_copy_to_device( pt, nzb+1, nzt, nys, nyn, i_bound_l, i_bound_l )
           ENDIF
           IF ( humidity )  THEN
-             !$ACC UPDATE DEVICE(q(:,:,nxlg:nxl), q_p(:,:,nxlg:nxl))
+             CALL nesting_offl_copy_to_device( q, nzb+1, nzt, nys, nyn, i_bound_l, i_bound_l )
           ENDIF
+          !$ACC KERNELS PRESENT(u)
+          u(:,nys:nyn,i_bound_l_u-1) = u(:,nys:nyn,i_bound_l_u)
+          !$ACC END KERNELS
        ENDIF
        IF ( bc_dirichlet_r )  THEN
-          !$ACC UPDATE DEVICE(u(:,:,nxr:nxrg), u_p(:,:,nxr:nxrg),                                  &
-          !$ACC               v(:,:,nxr:nxrg), v_p(:,:,nxr:nxrg),                                  &
-          !$ACC               w(:,:,nxr:nxrg), w_p(:,:,nxr:nxrg))
+          CALL nesting_offl_copy_to_device( u, nzb+1, nzt, nys, nyn, i_bound_r, i_bound_r )
+          CALL nesting_offl_copy_to_device( v, nzb+1, nzt, nysv, nyn, i_bound_r, i_bound_r )
+          CALL nesting_offl_copy_to_device( w, nzb+1, nzt, nys, nyn, i_bound_r, i_bound_r )
           IF ( .NOT. neutral )  THEN
-             !$ACC UPDATE DEVICE(pt(:,:,nxr:nxrg), pt_p(:,:,nxr:nxrg))
+             CALL nesting_offl_copy_to_device( pt, nzb+1, nzt, nys, nyn, i_bound_r, i_bound_r )
           ENDIF
           IF ( humidity )  THEN
-             !$ACC UPDATE DEVICE(q(:,:,nxr:nxrg), q_p(:,:,nxr:nxrg))
+             CALL nesting_offl_copy_to_device( q, nzb+1, nzt, nys, nyn, i_bound_r, i_bound_r )
           ENDIF
        ENDIF
        IF ( bc_dirichlet_s )  THEN
-          !$ACC UPDATE DEVICE(u(:,nysg:nys,:), u_p(:,nysg:nys,:),                                  &
-          !$ACC               v(:,nysg:nys,:), v_p(:,nysg:nys,:),                                  &
-          !$ACC               w(:,nysg:nys,:), w_p(:,nysg:nys,:))
+          CALL nesting_offl_copy_to_device( u, nzb+1, nzt, j_bound_s, j_bound_s, nxlu, nxr )
+          CALL nesting_offl_copy_to_device( v, nzb+1, nzt, j_bound_s_v, j_bound_s_v, nxl, nxr )
+          CALL nesting_offl_copy_to_device( w, nzb+1, nzt, j_bound_s, j_bound_s, nxl, nxr )
           IF ( .NOT. neutral )  THEN
-             !$ACC UPDATE DEVICE(pt(:,nysg:nys,:), pt_p(:,nysg:nys,:))
+             CALL nesting_offl_copy_to_device( pt, nzb+1, nzt, j_bound_s, j_bound_s, nxl, nxr )
           ENDIF
           IF ( humidity )  THEN
-             !$ACC UPDATE DEVICE(q(:,nysg:nys,:), q_p(:,nysg:nys,:))
+             CALL nesting_offl_copy_to_device( q, nzb+1, nzt, j_bound_s, j_bound_s, nxl, nxr )
+          ENDIF
+          !$ACC KERNELS PRESENT(v)
+          v(:,j_bound_s_v-1,nxl:nxr) = v(:,j_bound_s_v,nxl:nxr)
+          !$ACC END KERNELS
+       ENDIF
+       IF ( bc_dirichlet_n )  THEN
+          CALL nesting_offl_copy_to_device( u, nzb+1, nzt, j_bound_n, j_bound_n, nxlu, nxr )
+          CALL nesting_offl_copy_to_device( v, nzb+1, nzt, j_bound_n, j_bound_n, nxl, nxr )
+          CALL nesting_offl_copy_to_device( w, nzb+1, nzt, j_bound_n, j_bound_n, nxl, nxr )
+          IF ( .NOT. neutral )  THEN
+             CALL nesting_offl_copy_to_device( pt, nzb+1, nzt, j_bound_n, j_bound_n, nxl, nxr )
+          ENDIF
+          IF ( humidity )  THEN
+             CALL nesting_offl_copy_to_device( q, nzb+1, nzt, j_bound_n, j_bound_n, nxl, nxr )
+          ENDIF
+       ENDIF
+       CALL nesting_offl_copy_to_device( u, nzt+1, nzt+1, nys, nyn, nxlu, nxr )
+       CALL nesting_offl_copy_to_device( v, nzt+1, nzt+1, nysv, nyn, nxl, nxr )
+       CALL nesting_offl_copy_to_device( w, nzt, nzt+1, nys, nyn, nxl, nxr )
+       IF ( .NOT. neutral )  THEN
+          CALL nesting_offl_copy_to_device( pt, nzt+1, nzt+1, nys, nyn, nxl, nxr )
+       ENDIF
+       IF ( humidity )  THEN
+          CALL nesting_offl_copy_to_device( q, nzt+1, nzt+1, nys, nyn, nxl, nxr )
+       ENDIF
+!
+!--    Repeat the copies on the device: host copies above cannot supply current halo values.
+       IF ( bc_dirichlet_l )  THEN
+          !$ACC PARALLEL LOOP GANG VECTOR PRESENT( u )
+          DO  j = nysg, nyng
+             u(nzt+1,j,nxl) = u(nzt+1,j,nxlu)
+          ENDDO
+          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(2) PRESENT( u, u_p, v, v_p, w, w_p )
+          DO  j = nysg, nyng
+             DO  k = nzb, nzt+1
+                u_p(k,j,nxlu-1) = u(k,j,nxlu-1)
+                v_p(k,j,nxl-1) = v(k,j,nxl-1)
+                w_p(k,j,nxl-1) = w(k,j,nxl-1)
+             ENDDO
+          ENDDO
+          IF ( .NOT. neutral )  THEN
+             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(2) PRESENT( pt, pt_p )
+             DO  j = nysg, nyng
+                DO  k = nzb, nzt+1
+                   pt_p(k,j,nxl-1) = pt(k,j,nxl-1)
+                ENDDO
+             ENDDO
+          ENDIF
+          IF ( humidity )  THEN
+             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(2) PRESENT( q, q_p )
+             DO  j = nysg, nyng
+                DO  k = nzb, nzt+1
+                   q_p(k,j,nxl-1) = q(k,j,nxl-1)
+                ENDDO
+             ENDDO
+          ENDIF
+       ENDIF
+       IF ( bc_dirichlet_r )  THEN
+          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(2) PRESENT( u, u_p, v, v_p, w, w_p )
+          DO  j = nysg, nyng
+             DO  k = nzb, nzt+1
+                u_p(k,j,nxr+1) = u(k,j,nxr+1)
+                v_p(k,j,nxr+1) = v(k,j,nxr+1)
+                w_p(k,j,nxr+1) = w(k,j,nxr+1)
+             ENDDO
+          ENDDO
+          IF ( .NOT. neutral )  THEN
+             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(2) PRESENT( pt, pt_p )
+             DO  j = nysg, nyng
+                DO  k = nzb, nzt+1
+                   pt_p(k,j,nxr+1) = pt(k,j,nxr+1)
+                ENDDO
+             ENDDO
+          ENDIF
+          IF ( humidity )  THEN
+             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(2) PRESENT( q, q_p )
+             DO  j = nysg, nyng
+                DO  k = nzb, nzt+1
+                   q_p(k,j,nxr+1) = q(k,j,nxr+1)
+                ENDDO
+             ENDDO
+          ENDIF
+       ENDIF
+       IF ( bc_dirichlet_s )  THEN
+          !$ACC PARALLEL LOOP GANG VECTOR PRESENT( v )
+          DO  i = nxlg, nxrg
+             v(nzt+1,nys,i) = v(nzt+1,nysv,i)
+          ENDDO
+          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(2) PRESENT( u, u_p, v, v_p, w, w_p )
+          DO  i = nxlg, nxrg
+             DO  k = nzb, nzt+1
+                u_p(k,nys-1,i) = u(k,nys-1,i)
+                v_p(k,nysv-1,i) = v(k,nysv-1,i)
+                w_p(k,nys-1,i) = w(k,nys-1,i)
+             ENDDO
+          ENDDO
+          IF ( .NOT. neutral )  THEN
+             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(2) PRESENT( pt, pt_p )
+             DO  i = nxlg, nxrg
+                DO  k = nzb, nzt+1
+                   pt_p(k,nys-1,i) = pt(k,nys-1,i)
+                ENDDO
+             ENDDO
+          ENDIF
+          IF ( humidity )  THEN
+             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(2) PRESENT( q, q_p )
+             DO  i = nxlg, nxrg
+                DO  k = nzb, nzt+1
+                   q_p(k,nys-1,i) = q(k,nys-1,i)
+                ENDDO
+             ENDDO
           ENDIF
        ENDIF
        IF ( bc_dirichlet_n )  THEN
-          !$ACC UPDATE DEVICE(u(:,nyn:nyng,:), u_p(:,nyn:nyng,:),                                  &
-          !$ACC               v(:,nyn:nyng,:), v_p(:,nyn:nyng,:),                                  &
-          !$ACC               w(:,nyn:nyng,:), w_p(:,nyn:nyng,:))
+          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(2) PRESENT( u, u_p, v, v_p, w, w_p )
+          DO  i = nxlg, nxrg
+             DO  k = nzb, nzt+1
+                u_p(k,nyn+1,i) = u(k,nyn+1,i)
+                v_p(k,nyn+1,i) = v(k,nyn+1,i)
+                w_p(k,nyn+1,i) = w(k,nyn+1,i)
+             ENDDO
+          ENDDO
           IF ( .NOT. neutral )  THEN
-             !$ACC UPDATE DEVICE(pt(:,nyn:nyng,:), pt_p(:,nyn:nyng,:))
+             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(2) PRESENT( pt, pt_p )
+             DO  i = nxlg, nxrg
+                DO  k = nzb, nzt+1
+                   pt_p(k,nyn+1,i) = pt(k,nyn+1,i)
+                ENDDO
+             ENDDO
           ENDIF
           IF ( humidity )  THEN
-             !$ACC UPDATE DEVICE(q(:,nyn:nyng,:), q_p(:,nyn:nyng,:))
+             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(2) PRESENT( q, q_p )
+             DO  i = nxlg, nxrg
+                DO  k = nzb, nzt+1
+                   q_p(k,nyn+1,i) = q(k,nyn+1,i)
+                ENDDO
+             ENDDO
           ENDIF
        ENDIF
-       !$ACC UPDATE DEVICE(u(nzt:nzt+1,:,:), u_p(nzt:nzt+1,:,:),                                   &
-       !$ACC               v(nzt:nzt+1,:,:), v_p(nzt:nzt+1,:,:),                                   &
-       !$ACC               w(nzt:nzt+1,:,:), w_p(nzt:nzt+1,:,:))
+       !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(2) PRESENT( u, u_p, v, v_p, w, w_p )
+       DO  i = nxlg, nxrg
+          DO  j = nysg, nyng
+             u_p(nzt+1,j,i) = u(nzt+1,j,i)
+             v_p(nzt+1,j,i) = v(nzt+1,j,i)
+             w_p(nzt,j,i) = w(nzt,j,i)
+             w_p(nzt+1,j,i) = w(nzt,j,i)
+          ENDDO
+       ENDDO
        IF ( .NOT. neutral )  THEN
-          !$ACC UPDATE DEVICE(pt(nzt:nzt+1,:,:), pt_p(nzt:nzt+1,:,:))
+          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(2) PRESENT( pt, pt_p )
+          DO  i = nxlg, nxrg
+             DO  j = nysg, nyng
+                pt_p(nzt+1,j,i) = pt(nzt+1,j,i)
+             ENDDO
+          ENDDO
        ENDIF
        IF ( humidity )  THEN
-          !$ACC UPDATE DEVICE(q(nzt:nzt+1,:,:), q_p(nzt:nzt+1,:,:))
+          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(2) PRESENT( q, q_p )
+          DO  i = nxlg, nxrg
+             DO  j = nysg, nyng
+                q_p(nzt+1,j,i) = q(nzt+1,j,i)
+             ENDDO
+          ENDDO
        ENDIF
     ENDIF
 #endif
@@ -2370,11 +2599,17 @@
 !
 !-- Set top boundary condition at all horizontal grid points, also at the lateral boundary grid
 !-- points.
-    w(nzt+1,:,:)   = w(nzt,:,:)
-    w_p(nzt+1,:,:) = w(nzt+1,:,:)
 #if defined( _OPENACC )
     IF ( enable_openacc  .AND.  acc_is_present( w ) )  THEN
-       !$ACC UPDATE DEVICE(w(nzt:nzt+1,:,:), w_p(nzt:nzt+1,:,:))
+       !$ACC KERNELS PRESENT(w, w_p)
+       w(nzt+1,:,:)   = w(nzt,:,:)
+       w_p(nzt+1,:,:) = w(nzt+1,:,:)
+       !$ACC END KERNELS
+    ELSE
+#endif
+       w(nzt+1,:,:)   = w(nzt,:,:)
+       w_p(nzt+1,:,:) = w(nzt+1,:,:)
+#if defined( _OPENACC )
     ENDIF
 #endif
 !
@@ -3473,5 +3708,35 @@
 
  END SUBROUTINE nesting_offl_init_modules
 
+
+#if defined( _OPENACC )
+!--------------------------------------------------------------------------------------------------!
+! Description:
+! ------------
+!> Transfer a prescribed boundary region in one contiguous buffer. Only the supplied bounds are
+!> written on the device; all other points retain their device values.
+!--------------------------------------------------------------------------------------------------!
+ SUBROUTINE nesting_offl_copy_to_device( field, kb, kt, js, jn, il, ir )
+
+    INTEGER(iwp), INTENT(IN) ::  kb, kt, js, jn, il, ir
+    REAL(wp), DIMENSION(nzb:nzt+1,nysg:nyng,nxlg:nxrg), INTENT(INOUT) ::  field
+    REAL(wp), ALLOCATABLE ::  buffer(:,:,:)
+    INTEGER(iwp) ::  i, j, k
+
+    IF ( kb > kt .OR. js > jn .OR. il > ir )  RETURN
+    ALLOCATE( buffer(kb:kt,js:jn,il:ir) )
+    buffer = field(kb:kt,js:jn,il:ir)
+    !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) VECTOR_LENGTH(128) PRESENT(field) COPYIN(buffer)
+    DO  i = il, ir
+       DO  j = js, jn
+          DO  k = kb, kt
+             field(k,j,i) = buffer(k,j,i)
+          ENDDO
+       ENDDO
+    ENDDO
+    DEALLOCATE( buffer )
+
+ END SUBROUTINE nesting_offl_copy_to_device
+#endif
 
  END MODULE nesting_offl_mod
