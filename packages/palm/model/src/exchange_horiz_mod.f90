@@ -244,8 +244,8 @@
 
 #if defined( __parallel )
 !
-!-- Exchange in y-direction of lateral boundaries. Must be done before exchange in x, because
-!-- in case of buffering, only computational grid points (nxl:nxr) will be exchanged.
+!-- Exchange y boundaries first. The following x exchange propagates the updated y ghost
+!-- values to corner points.
     IF ( npey == 1  .OR.  switch_to_pe0 )  THEN
 !
 !--    One-dimensional decomposition along x, boundary values can be exchanged within the PE memory
@@ -329,18 +329,19 @@
 
 !
 !--          Allocate buffers for sending / receiving ghost layer data
-             ALLOCATE( recvbuf1(nzb:nzt+1,nxl:nxr,nbgp_local) )
-             ALLOCATE( recvbuf2(nzb:nzt+1,nxl:nxr,nbgp_local) )
-             ALLOCATE( sendbuf1(nzb:nzt+1,nxl:nxr,nbgp_local) )
-             ALLOCATE( sendbuf2(nzb:nzt+1,nxl:nxr,nbgp_local) )
+             ALLOCATE( recvbuf1(nzb:nzt+1,nxl-nbgp_local:nxr+nbgp_local,nbgp_local) )
+             ALLOCATE( recvbuf2(nzb:nzt+1,nxl-nbgp_local:nxr+nbgp_local,nbgp_local) )
+             ALLOCATE( sendbuf1(nzb:nzt+1,nxl-nbgp_local:nxr+nbgp_local,nbgp_local) )
+             ALLOCATE( sendbuf2(nzb:nzt+1,nxl-nbgp_local:nxr+nbgp_local,nbgp_local) )
              !$ACC DATA CREATE(recvbuf1,recvbuf2,sendbuf1,sendbuf2) IF(lacc)
 
-             bufsize = ( nzt - nzb + 2 ) * ( nxr - nxl + 1 ) * nbgp_local
+             bufsize = ( nzt - nzb + 2 ) * ( nxr - nxl + 1 + 2 * nbgp_local ) * nbgp_local
 
 !
-!--          Pack south and north boundaries into independent buffers.
+!--          Include x ghost points, as in the MPI datatype path. At physical x boundaries,
+!--          the following x exchange has no neighbor and cannot complete these corner points.
              !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
-             DO  i = nxl, nxr
+             DO  i = nxl-nbgp_local, nxr+nbgp_local
                 DO  j = 1, nbgp_local
                    DO  k = nzb, nzt+1
                       sendbuf1(k,i,j) = ar(k,nys+j-1,i)
@@ -352,24 +353,24 @@
 !
 !--          Send south boundary, receive north one (asynchronous)
              !$ACC HOST_DATA USE_DEVICE(sendbuf1) IF(lacc)
-             CALL MPI_ISEND( sendbuf1(nzb,nxl,1), bufsize, MPI_REAL, south_pe, req_count,          &
-                             communicator, req(req_count+1), ierr )
+             CALL MPI_ISEND( sendbuf1(nzb,nxl-nbgp_local,1), bufsize, MPI_REAL, south_pe,         &
+                             req_count, communicator, req(req_count+1), ierr )
              !$ACC END HOST_DATA
 
              !$ACC HOST_DATA USE_DEVICE(recvbuf1) IF(lacc)
-             CALL MPI_IRECV( recvbuf1(nzb,nxl,1), bufsize, MPI_REAL, north_pe, req_count,          &
-                             communicator, req(req_count+2), ierr )
+             CALL MPI_IRECV( recvbuf1(nzb,nxl-nbgp_local,1), bufsize, MPI_REAL, north_pe,         &
+                             req_count, communicator, req(req_count+2), ierr )
              !$ACC END HOST_DATA
 !
 !--          Send north boundary, receive south one (asynchronous)
              !$ACC HOST_DATA USE_DEVICE(sendbuf2) IF(lacc)
-             CALL MPI_ISEND( sendbuf2(nzb,nxl,1), bufsize, MPI_REAL, north_pe, req_count+1,        &
-                             communicator, req(req_count+3), ierr )
+             CALL MPI_ISEND( sendbuf2(nzb,nxl-nbgp_local,1), bufsize, MPI_REAL, north_pe,         &
+                             req_count+1, communicator, req(req_count+3), ierr )
              !$ACC END HOST_DATA
 
              !$ACC HOST_DATA USE_DEVICE(recvbuf2) IF(lacc)
-             CALL MPI_IRECV( recvbuf2(nzb,nxl,1), bufsize, MPI_REAL, south_pe, req_count+1,        &
-                             communicator, req(req_count+4), ierr )
+             CALL MPI_IRECV( recvbuf2(nzb,nxl-nbgp_local,1), bufsize, MPI_REAL, south_pe,         &
+                             req_count+1, communicator, req(req_count+4), ierr )
              !$ACC END HOST_DATA
 
              CALL MPI_WAITALL( 4, req, wait_stat, ierr )
@@ -377,7 +378,7 @@
 !--          Unpack north and south boundaries into disjoint ghost layers.
 !--          Receives from MPI_PROC_NULL leave buffers unchanged; preserve those physical boundaries.
              !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
-             DO  i = nxl, nxr
+             DO  i = nxl-nbgp_local, nxr+nbgp_local
                 DO  j = 1, nbgp_local
                    DO  k = nzb, nzt+1
                       IF ( north_pe /= MPI_PROC_NULL )  ar(k,nyn+j,i) = recvbuf1(k,i,j)
@@ -759,8 +760,8 @@
     north_pe = pnorth
 
 !
-!-- Exchange in y-direction of lateral boundaries. Must be done before exchange in x, because
-!-- in case of buffering, only computational grid points (nxl:nxr) will be exchanged.
+!-- Exchange y boundaries first. The following x exchange propagates the updated y ghost
+!-- values to corner points.
     IF ( npey == 1 )  THEN
 
        IF ( bc_ns_cyc )  THEN

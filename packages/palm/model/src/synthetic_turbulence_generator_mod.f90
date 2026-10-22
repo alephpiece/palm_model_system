@@ -132,6 +132,11 @@
     USE nesting_offl_mod,                                                                          &
         ONLY:  nesting_offl_calc_zi
 
+#if defined( _OPENACC )
+    USE nesting_offl_mod,                                                                          &
+        ONLY:  nesting_offl_copy_to_device
+#endif
+
     USE pegrid,                                                                                    &
         ONLY:  comm1dx,                                                                            &
                comm1dy,                                                                            &
@@ -1641,7 +1646,7 @@
                 ENDDO
                 DO  j = nysv, nyn
                    DO  k = nzb, nzt+1
-                      v(k,j,-1)  = ( v(k,j,nxr+1) + dist_yz(k,j,2,iside) ) *                       &
+                      v(k,j,-1)  = ( v(k,j,-1) + dist_yz(k,j,2,iside) ) *                          &
                                    MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,-1), 2 ) )
                    ENDDO
                 ENDDO
@@ -1898,28 +1903,67 @@
 !-- Push only STG-perturbed boundary planes to the device before halo exchange.
 #if defined( _OPENACC )
     IF ( enable_openacc  .AND.  acc_is_present( u ) )  THEN
-       IF ( myidx == id_stg_left  .AND.  id_stg_left >= 0 )  THEN
-          !$ACC UPDATE DEVICE(u(:,:,nxlg:nxl), v(:,:,nxlg:nxl), w(:,:,nxlg:nxl))
-          IF ( disturb_theta )  THEN
-             !$ACC UPDATE DEVICE(pt(:,:,nxlg:nxl))
+       IF ( nesting_offline )  THEN
+!
+!--       Offline BC values are current on the host only at the prescribed physical faces.
+!--       Do not overwrite the adjacent prognostic points or device-owned halo values.
+!--       Pack each prescribed region into a contiguous transfer buffer.
+          IF ( myidx == id_stg_left  .AND.  id_stg_left >= 0 )  THEN
+             CALL nesting_offl_copy_to_device( u, nzb+1, nzt, nys, nyn, nxl-1, nxl )
+             CALL nesting_offl_copy_to_device( v, nzb, nzt+1, nysv, nyn, nxl-1, nxl-1 )
+             CALL nesting_offl_copy_to_device( w, nzb+1, nzt, nys, nyn, nxl-1, nxl-1 )
+             IF ( disturb_theta )  THEN
+                CALL nesting_offl_copy_to_device( pt, nzb+1, nzt, nys, nyn, nxl-1, nxl-1 )
+             ENDIF
           ENDIF
-       ENDIF
-       IF ( myidx == id_stg_right  .AND.  id_stg_right >= 0 )  THEN
-          !$ACC UPDATE DEVICE(u(:,:,nxr:nxrg), v(:,:,nxr:nxrg), w(:,:,nxr:nxrg))
-          IF ( disturb_theta )  THEN
-             !$ACC UPDATE DEVICE(pt(:,:,nxr:nxrg))
+          IF ( myidx == id_stg_right  .AND.  id_stg_right >= 0 )  THEN
+             CALL nesting_offl_copy_to_device( u, nzb+1, nzt, nys, nyn, nxr+1, nxr+1 )
+             CALL nesting_offl_copy_to_device( v, nzb+1, nzt, nysv, nyn, nxr+1, nxr+1 )
+             CALL nesting_offl_copy_to_device( w, nzb+1, nzt, nys, nyn, nxr+1, nxr+1 )
+             IF ( disturb_theta )  THEN
+                CALL nesting_offl_copy_to_device( pt, nzb+1, nzt, nys, nyn, nxr+1, nxr+1 )
+             ENDIF
           ENDIF
-       ENDIF
-       IF ( myidy == id_stg_south  .AND.  id_stg_south >= 0 )  THEN
-          !$ACC UPDATE DEVICE(u(:,nysg:nys,:), v(:,nysg:nys,:), w(:,nysg:nys,:))
-          IF ( disturb_theta )  THEN
-             !$ACC UPDATE DEVICE(pt(:,nysg:nys,:))
+          IF ( myidy == id_stg_south  .AND.  id_stg_south >= 0 )  THEN
+             CALL nesting_offl_copy_to_device( u, nzb+1, nzt, nys-1, nys-1, nxlu, nxr )
+             CALL nesting_offl_copy_to_device( v, nzb+1, nzt, nys-1, nys, nxl, nxr )
+             CALL nesting_offl_copy_to_device( w, nzb+1, nzt, nys-1, nys-1, nxl, nxr )
+             IF ( disturb_theta )  THEN
+                CALL nesting_offl_copy_to_device( pt, nzb+1, nzt, nys-1, nys-1, nxl, nxr )
+             ENDIF
           ENDIF
-       ENDIF
-       IF ( myidy == id_stg_north  .AND.  id_stg_north >= 0 )  THEN
-          !$ACC UPDATE DEVICE(u(:,nyn:nyng,:), v(:,nyn:nyng,:), w(:,nyn:nyng,:))
-          IF ( disturb_theta )  THEN
-             !$ACC UPDATE DEVICE(pt(:,nyn:nyng,:))
+          IF ( myidy == id_stg_north  .AND.  id_stg_north >= 0 )  THEN
+             CALL nesting_offl_copy_to_device( u, nzb+1, nzt, nyn+1, nyn+1, nxlu, nxr )
+             CALL nesting_offl_copy_to_device( v, nzb+1, nzt, nyn+1, nyn+1, nxl, nxr )
+             CALL nesting_offl_copy_to_device( w, nzb+1, nzt, nyn+1, nyn+1, nxl, nxr )
+             IF ( disturb_theta )  THEN
+                CALL nesting_offl_copy_to_device( pt, nzb+1, nzt, nyn+1, nyn+1, nxl, nxr )
+             ENDIF
+          ENDIF
+       ELSE
+          IF ( myidx == id_stg_left  .AND.  id_stg_left >= 0 )  THEN
+             !$ACC UPDATE DEVICE(u(:,:,nxlg:nxl), v(:,:,nxlg:nxl), w(:,:,nxlg:nxl))
+             IF ( disturb_theta )  THEN
+                !$ACC UPDATE DEVICE(pt(:,:,nxlg:nxl))
+             ENDIF
+          ENDIF
+          IF ( myidx == id_stg_right  .AND.  id_stg_right >= 0 )  THEN
+             !$ACC UPDATE DEVICE(u(:,:,nxr:nxrg), v(:,:,nxr:nxrg), w(:,:,nxr:nxrg))
+             IF ( disturb_theta )  THEN
+                !$ACC UPDATE DEVICE(pt(:,:,nxr:nxrg))
+             ENDIF
+          ENDIF
+          IF ( myidy == id_stg_south  .AND.  id_stg_south >= 0 )  THEN
+             !$ACC UPDATE DEVICE(u(:,nysg:nys,:), v(:,nysg:nys,:), w(:,nysg:nys,:))
+             IF ( disturb_theta )  THEN
+                !$ACC UPDATE DEVICE(pt(:,nysg:nys,:))
+             ENDIF
+          ENDIF
+          IF ( myidy == id_stg_north  .AND.  id_stg_north >= 0 )  THEN
+             !$ACC UPDATE DEVICE(u(:,nyn:nyng,:), v(:,nyn:nyng,:), w(:,nyn:nyng,:))
+             IF ( disturb_theta )  THEN
+                !$ACC UPDATE DEVICE(pt(:,nyn:nyng,:))
+             ENDIF
           ENDIF
        ENDIF
     ENDIF
