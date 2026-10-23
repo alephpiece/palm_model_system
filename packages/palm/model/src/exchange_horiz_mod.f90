@@ -711,16 +711,18 @@
     INTEGER(iwp), DIMENSION(2,2) ::  ktop_for_nys_recv     !< upper loop index for k loop (ghost point exchange of south boundary)
     INTEGER(iwp), DIMENSION(2,2) ::  ktop_for_nys_send     !< upper loop index for k loop (ghost point exchange of south boundary)
 
+    INTEGER(iwp) ::  kidx, nk            !< common vertical copy index and count
+    INTEGER(iwp) ::  hidx, nh            !< common horizontal copy index and count
+    INTEGER(iwp) ::  h1, h2, h3, h4      !< horizontal starts of independent copy loops
+    INTEGER(iwp) ::  kb1, kb2, kb3, kb4  !< vertical lower bounds of copy loops
+    INTEGER(iwp) ::  kt1, kt2, kt3, kt4  !< vertical upper bounds of copy loops
+
     INTEGER(iwp) ::  bufsize       !< size of buffer for sending/receiving contiguous data
     INTEGER(iwp) ::  communicator  !< communicator that is used as argument in MPI calls
     INTEGER(iwp) ::  i             !< loop index
-    INTEGER(iwp) ::  il            !< loop index
     INTEGER(iwp) ::  j             !< loop index
-    INTEGER(iwp) ::  js            !< loop index
     INTEGER(iwp) ::  k             !< loop index
-    INTEGER(iwp) ::  kb            !< bottom loop index
     INTEGER(iwp) ::  ki            !< local increment of k loop
-    INTEGER(iwp) ::  kt            !< top loop index
     INTEGER(iwp) ::  nxr_rb        !< upper index for red/black decomposition (pressure)
     INTEGER(iwp) ::  nyn_rb        !< upper index for red/black decomposition (pressure)
     INTEGER(iwp) ::  left_pe       !< id of left pe that is used as argument in MPI calls
@@ -734,8 +736,8 @@
     REAL(wp), DIMENSION(nzb:nzt+1,nys-nbgp_local:nyn+nbgp_local,                                   &
                         nxl-nbgp_local:nxr+nbgp_local) ::  ar !< 3d-array for which exchange is done
 
-    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  recvbuf1  !< buffer for sending contiguous ghost layer data
-    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  recvbuf2  !< buffer for sending contiguous ghost layer data
+    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  recvbuf1  !< buffer for receiving contiguous ghost layer data
+    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  recvbuf2  !< buffer for receiving contiguous ghost layer data
     REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  sendbuf1  !< buffer for sending contiguous ghost layer data
     REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  sendbuf2  !< buffer for sending contiguous ghost layer data
 
@@ -795,7 +797,6 @@
 !--    Special case for exchanging only red/black colored pressure points.
 !--    Allocate buffers for sending / receiving ghost layer data.
 !--    Only 2d-arrays are required since number of ghost layers is limited to one.
-!--    Third index is used here, since the arrays are declared as 3d.
        nxr_rb = ( nxr - nxl ) / 2
 
        ALLOCATE( recvbuf1(nzb+1:nzt,0:nxr_rb) )
@@ -808,46 +809,37 @@
 
 !
 !--    Pack data for sending south/north boundary.
-       il = ileft_for_nys_send(1,color)
-       kb = kbottom_for_nys_send(1,color)
-       kt = ktop_for_nys_send(1,color)
-       !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
-       DO  i = il, nxr, 2
-          DO  k = kb, kt, ki
-             sendbuf1(k,(i-il)/2) = ar(k,nys,i)
-          ENDDO
-       ENDDO
-       !$ACC END PARALLEL LOOP
-
-       il = ileft_for_nyn_send(1,color)
-       kb = kbottom_for_nyn_send(1,color)
-       kt = ktop_for_nyn_send(1,color)
-       !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
-       DO  i = il, nxr, 2
-          DO  k = kb, kt, ki
-             sendbuf2(k,(i-il)/2) = ar(k,nyn,i)
-          ENDDO
-       ENDDO
-       !$ACC END PARALLEL LOOP
-
-       il = ileft_for_nys_send(2,color)
-       kb = kbottom_for_nys_send(2,color)
-       kt = ktop_for_nys_send(2,color)
-       !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
-       DO  i = il, nxr, 2
-          DO  k = kb, kt, ki
-             sendbuf1(k,(i-il)/2) = ar(k,nys,i)
-          ENDDO
-       ENDDO
-       !$ACC END PARALLEL LOOP
-
-       il = ileft_for_nyn_send(2,color)
-       kb = kbottom_for_nyn_send(2,color)
-       kt = ktop_for_nyn_send(2,color)
-       !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
-       DO  i = il, nxr, 2
-          DO  k = kb, kt, ki
-             sendbuf2(k,(i-il)/2) = ar(k,nyn,i)
+!--    A common rectangle covers all four copy groups; each guard retains its original bounds.
+!--    Groups sharing a buffer write disjoint vertical halves (ki=1) or odd/even levels (ki=2).
+       h1 = ileft_for_nys_send(1,color)
+       kb1 = kbottom_for_nys_send(1,color)
+       kt1 = ktop_for_nys_send(1,color)
+       h2 = ileft_for_nyn_send(1,color)
+       kb2 = kbottom_for_nyn_send(1,color)
+       kt2 = ktop_for_nyn_send(1,color)
+       h3 = ileft_for_nys_send(2,color)
+       kb3 = kbottom_for_nys_send(2,color)
+       kt3 = ktop_for_nys_send(2,color)
+       h4 = ileft_for_nyn_send(2,color)
+       kb4 = kbottom_for_nyn_send(2,color)
+       kt4 = ktop_for_nyn_send(2,color)
+       nh = MAX( 0, ( nxr - MIN( h1, h2, h3, h4 ) + 2 ) / 2 )
+       nk = MAX( 0, ( MAX( kt1-kb1, kt2-kb2, kt3-kb3, kt4-kb4 ) + ki ) / ki )
+       !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(2) DEFAULT(PRESENT) IF(lacc)
+       DO  hidx = 0, nh-1
+          DO  kidx = 0, nk-1
+             IF ( h1+2*hidx <= nxr .AND. kb1+ki*kidx <= kt1 )  THEN
+                sendbuf1(kb1+ki*kidx,hidx) = ar(kb1+ki*kidx,nys,h1+2*hidx)
+             ENDIF
+             IF ( h2+2*hidx <= nxr .AND. kb2+ki*kidx <= kt2 )  THEN
+                sendbuf2(kb2+ki*kidx,hidx) = ar(kb2+ki*kidx,nyn,h2+2*hidx)
+             ENDIF
+             IF ( h3+2*hidx <= nxr .AND. kb3+ki*kidx <= kt3 )  THEN
+                sendbuf1(kb3+ki*kidx,hidx) = ar(kb3+ki*kidx,nys,h3+2*hidx)
+             ENDIF
+             IF ( h4+2*hidx <= nxr .AND. kb4+ki*kidx <= kt4 )  THEN
+                sendbuf2(kb4+ki*kidx,hidx) = ar(kb4+ki*kidx,nyn,h4+2*hidx)
+             ENDIF
           ENDDO
        ENDDO
        !$ACC END PARALLEL LOOP
@@ -879,27 +871,27 @@
 
 !
 !--    Unpack received south/north boundary data.
+!--    Read receive indices only for communicating sides; physical-boundary entries may be unset.
        IF ( .NOT. bc_dirichlet_n  .AND.  .NOT. bc_radiation_n )  THEN
 
-          il = ileft_for_nyn_recv(1,color)
-          kb = kbottom_for_nyn_recv(1,color)
-          kt = ktop_for_nyn_recv(1,color)
-          !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
-          DO  i = il, nxr, 2
-             DO  k = kb, kt, ki
-                ar(k,nyn+1,i) = recvbuf1(k,(i-il)/2)
+          h1 = ileft_for_nyn_recv(1,color)
+          kb1 = kbottom_for_nyn_recv(1,color)
+          kt1 = ktop_for_nyn_recv(1,color)
+          h2 = ileft_for_nyn_recv(2,color)
+          kb2 = kbottom_for_nyn_recv(2,color)
+          kt2 = ktop_for_nyn_recv(2,color)
+          nh = MAX( 0, ( nxr - MIN( h1, h2 ) + 2 ) / 2 )
+          nk = MAX( 0, ( MAX( kt1-kb1, kt2-kb2 ) + ki ) / ki )
+          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(2) DEFAULT(PRESENT) IF(lacc)
+          DO  hidx = 0, nh-1
+             DO  kidx = 0, nk-1
+                IF ( h1+2*hidx <= nxr .AND. kb1+ki*kidx <= kt1 )  THEN
+                   ar(kb1+ki*kidx,nyn+1,h1+2*hidx) = recvbuf1(kb1+ki*kidx,hidx)
+                ENDIF
+                IF ( h2+2*hidx <= nxr .AND. kb2+ki*kidx <= kt2 )  THEN
+                   ar(kb2+ki*kidx,nyn+1,h2+2*hidx) = recvbuf1(kb2+ki*kidx,hidx)
+                ENDIF
              ENDDO
-          ENDDO
-          !$ACC END PARALLEL LOOP
-
-          il = ileft_for_nyn_recv(2,color)
-          kb = kbottom_for_nyn_recv(2,color)
-          kt = ktop_for_nyn_recv(2,color)
-          !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
-          DO  i = il, nxr, 2
-             DO  k = kb, kt, ki
-                ar(k,nyn+1,i) = recvbuf1(k,(i-il)/2)
-                ENDDO
           ENDDO
           !$ACC END PARALLEL LOOP
 
@@ -907,24 +899,23 @@
 
        IF ( .NOT. bc_dirichlet_s  .AND.  .NOT. bc_radiation_s )  THEN
 
-          il = ileft_for_nys_recv(1,color)
-          kb = kbottom_for_nys_recv(1,color)
-          kt = ktop_for_nys_recv(1,color)
-          !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
-          DO  i = il, nxr, 2
-             DO  k = kb, kt, ki
-                ar(k,nys-1,i) = recvbuf2(k,(i-il)/2)
-             ENDDO
-          ENDDO
-          !$ACC END PARALLEL LOOP
-
-          il = ileft_for_nys_recv(2,color)
-          kb = kbottom_for_nys_recv(2,color)
-          kt = ktop_for_nys_recv(2,color)
-          !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
-          DO  i = il, nxr, 2
-             DO  k = kb, kt, ki
-                ar(k,nys-1,i) = recvbuf2(k,(i-il)/2)
+          h1 = ileft_for_nys_recv(1,color)
+          kb1 = kbottom_for_nys_recv(1,color)
+          kt1 = ktop_for_nys_recv(1,color)
+          h2 = ileft_for_nys_recv(2,color)
+          kb2 = kbottom_for_nys_recv(2,color)
+          kt2 = ktop_for_nys_recv(2,color)
+          nh = MAX( 0, ( nxr - MIN( h1, h2 ) + 2 ) / 2 )
+          nk = MAX( 0, ( MAX( kt1-kb1, kt2-kb2 ) + ki ) / ki )
+          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(2) DEFAULT(PRESENT) IF(lacc)
+          DO  hidx = 0, nh-1
+             DO  kidx = 0, nk-1
+                IF ( h1+2*hidx <= nxr .AND. kb1+ki*kidx <= kt1 )  THEN
+                   ar(kb1+ki*kidx,nys-1,h1+2*hidx) = recvbuf2(kb1+ki*kidx,hidx)
+                ENDIF
+                IF ( h2+2*hidx <= nxr .AND. kb2+ki*kidx <= kt2 )  THEN
+                   ar(kb2+ki*kidx,nys-1,h2+2*hidx) = recvbuf2(kb2+ki*kidx,hidx)
+                ENDIF
              ENDDO
           ENDDO
           !$ACC END PARALLEL LOOP
@@ -983,47 +974,37 @@
        bufsize = ( nzt - nzb ) * ( nyn_rb + 3 )
 
 !
-!--    Pack data for sending left/right boundary.
-       js = jsouth_for_nxl_send(1,color)
-       kb = kbottom_for_nxl_send(1,color)
-       kt = ktop_for_nxl_send(1,color)
-       !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
-       DO  j = js, nyn+1, 2
-          DO  k = kb, kt, ki
-             sendbuf1(k,(j-js)/2-1) = ar(k,j,nxl)
-          ENDDO
-       ENDDO
-       !$ACC END PARALLEL LOOP
-
-       js = jsouth_for_nxr_send(1,color)
-       kb = kbottom_for_nxr_send(1,color)
-       kt = ktop_for_nxr_send(1,color)
-       !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
-       DO  j = js, nyn+1, 2
-          DO  k = kb, kt, ki
-             sendbuf2(k,(j-js)/2-1) = ar(k,j,nxr)
-          ENDDO
-       ENDDO
-       !$ACC END PARALLEL LOOP
-
-       js = jsouth_for_nxl_send(2,color)
-       kb = kbottom_for_nxl_send(2,color)
-       kt = ktop_for_nxl_send(2,color)
-       !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
-       DO  j = js, nyn+1, 2
-          DO  k = kb, kt, ki
-             sendbuf1(k,(j-js)/2-1) = ar(k,j,nxl)
-          ENDDO
-       ENDDO
-       !$ACC END PARALLEL LOOP
-
-       js = jsouth_for_nxr_send(2,color)
-       kb = kbottom_for_nxr_send(2,color)
-       kt = ktop_for_nxr_send(2,color)
-       !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
-       DO  j = js, nyn+1, 2
-          DO  k = kb, kt, ki
-             sendbuf2(k,(j-js)/2-1) = ar(k,j,nxr)
+!--    Pack data for sending left/right boundary, including the updated y ghost points.
+!--    hidx-1 matches the horizontal buffer lower bound of -1.
+       h1 = jsouth_for_nxl_send(1,color)
+       kb1 = kbottom_for_nxl_send(1,color)
+       kt1 = ktop_for_nxl_send(1,color)
+       h2 = jsouth_for_nxr_send(1,color)
+       kb2 = kbottom_for_nxr_send(1,color)
+       kt2 = ktop_for_nxr_send(1,color)
+       h3 = jsouth_for_nxl_send(2,color)
+       kb3 = kbottom_for_nxl_send(2,color)
+       kt3 = ktop_for_nxl_send(2,color)
+       h4 = jsouth_for_nxr_send(2,color)
+       kb4 = kbottom_for_nxr_send(2,color)
+       kt4 = ktop_for_nxr_send(2,color)
+       nh = MAX( 0, ( nyn+1 - MIN( h1, h2, h3, h4 ) + 2 ) / 2 )
+       nk = MAX( 0, ( MAX( kt1-kb1, kt2-kb2, kt3-kb3, kt4-kb4 ) + ki ) / ki )
+       !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(2) DEFAULT(PRESENT) IF(lacc)
+       DO  hidx = 0, nh-1
+          DO  kidx = 0, nk-1
+             IF ( h1+2*hidx <= nyn+1 .AND. kb1+ki*kidx <= kt1 )  THEN
+                sendbuf1(kb1+ki*kidx,hidx-1) = ar(kb1+ki*kidx,h1+2*hidx,nxl)
+             ENDIF
+             IF ( h2+2*hidx <= nyn+1 .AND. kb2+ki*kidx <= kt2 )  THEN
+                sendbuf2(kb2+ki*kidx,hidx-1) = ar(kb2+ki*kidx,h2+2*hidx,nxr)
+             ENDIF
+             IF ( h3+2*hidx <= nyn+1 .AND. kb3+ki*kidx <= kt3 )  THEN
+                sendbuf1(kb3+ki*kidx,hidx-1) = ar(kb3+ki*kidx,h3+2*hidx,nxl)
+             ENDIF
+             IF ( h4+2*hidx <= nyn+1 .AND. kb4+ki*kidx <= kt4 )  THEN
+                sendbuf2(kb4+ki*kidx,hidx-1) = ar(kb4+ki*kidx,h4+2*hidx,nxr)
+             ENDIF
           ENDDO
        ENDDO
        !$ACC END PARALLEL LOOP
@@ -1057,24 +1038,23 @@
 !--    Unpack received left/right boundary data.
        IF ( .NOT. bc_dirichlet_r  .AND.  .NOT. bc_radiation_r )  THEN
 
-          js = jsouth_for_nxr_recv(1,color)
-          kb = kbottom_for_nxr_recv(1,color)
-         kt = ktop_for_nxr_recv(1,color)
-          !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
-          DO  j = js, nyn+1, 2
-             DO  k = kb, kt, ki
-               ar(k,j,nxr+1) = recvbuf1(k,(j-js)/2-1)
-             ENDDO
-          ENDDO
-          !$ACC END PARALLEL LOOP
-
-          js = jsouth_for_nxr_recv(2,color)
-          kb = kbottom_for_nxr_recv(2,color)
-          kt = ktop_for_nxr_recv(2,color)
-         !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
-          DO  j = js, nyn+1, 2
-             DO  k = kb, kt, ki
-                ar(k,j,nxr+1) = recvbuf1(k,(j-js)/2-1)
+          h1 = jsouth_for_nxr_recv(1,color)
+          kb1 = kbottom_for_nxr_recv(1,color)
+          kt1 = ktop_for_nxr_recv(1,color)
+          h2 = jsouth_for_nxr_recv(2,color)
+          kb2 = kbottom_for_nxr_recv(2,color)
+          kt2 = ktop_for_nxr_recv(2,color)
+          nh = MAX( 0, ( nyn+1 - MIN( h1, h2 ) + 2 ) / 2 )
+          nk = MAX( 0, ( MAX( kt1-kb1, kt2-kb2 ) + ki ) / ki )
+          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(2) DEFAULT(PRESENT) IF(lacc)
+          DO  hidx = 0, nh-1
+             DO  kidx = 0, nk-1
+                IF ( h1+2*hidx <= nyn+1 .AND. kb1+ki*kidx <= kt1 )  THEN
+                   ar(kb1+ki*kidx,h1+2*hidx,nxr+1) = recvbuf1(kb1+ki*kidx,hidx-1)
+                ENDIF
+                IF ( h2+2*hidx <= nyn+1 .AND. kb2+ki*kidx <= kt2 )  THEN
+                   ar(kb2+ki*kidx,h2+2*hidx,nxr+1) = recvbuf1(kb2+ki*kidx,hidx-1)
+                ENDIF
              ENDDO
           ENDDO
           !$ACC END PARALLEL LOOP
@@ -1083,24 +1063,23 @@
 
        IF ( .NOT. bc_dirichlet_l  .AND.  .NOT. bc_radiation_l )  THEN
 
-          js = jsouth_for_nxl_recv(1,color)
-          kb = kbottom_for_nxl_recv(1,color)
-          kt = ktop_for_nxl_recv(1,color)
-          !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
-          DO  j = js, nyn+1, 2
-             DO  k = kb, kt, ki
-                ar(k,j,nxl-1) = recvbuf2(k,(j-js)/2-1)
-             ENDDO
-          ENDDO
-          !$ACC END PARALLEL LOOP
-
-          js = jsouth_for_nxl_recv(2,color)
-          kb = kbottom_for_nxl_recv(2,color)
-          kt = ktop_for_nxl_recv(2,color)
-          !$ACC PARALLEL LOOP GANG VECTOR DEFAULT(PRESENT) IF(lacc)
-          DO  j = js, nyn+1, 2
-             DO  k = kb, kt, ki
-                ar(k,j,nxl-1) = recvbuf2(k,(j-js)/2-1)
+          h1 = jsouth_for_nxl_recv(1,color)
+          kb1 = kbottom_for_nxl_recv(1,color)
+          kt1 = ktop_for_nxl_recv(1,color)
+          h2 = jsouth_for_nxl_recv(2,color)
+          kb2 = kbottom_for_nxl_recv(2,color)
+          kt2 = ktop_for_nxl_recv(2,color)
+          nh = MAX( 0, ( nyn+1 - MIN( h1, h2 ) + 2 ) / 2 )
+          nk = MAX( 0, ( MAX( kt1-kb1, kt2-kb2 ) + ki ) / ki )
+          !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(2) DEFAULT(PRESENT) IF(lacc)
+          DO  hidx = 0, nh-1
+             DO  kidx = 0, nk-1
+                IF ( h1+2*hidx <= nyn+1 .AND. kb1+ki*kidx <= kt1 )  THEN
+                   ar(kb1+ki*kidx,h1+2*hidx,nxl-1) = recvbuf2(kb1+ki*kidx,hidx-1)
+                ENDIF
+                IF ( h2+2*hidx <= nyn+1 .AND. kb2+ki*kidx <= kt2 )  THEN
+                   ar(kb2+ki*kidx,h2+2*hidx,nxl-1) = recvbuf2(kb2+ki*kidx,hidx-1)
+                ENDIF
              ENDDO
           ENDDO
           !$ACC END PARALLEL LOOP
