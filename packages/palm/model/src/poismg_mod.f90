@@ -931,12 +931,7 @@
     IMPLICIT NONE
 
     INTEGER(iwp) ::  kk        !< vertical block index
-    INTEGER(iwp) ::  q         !< same-color subset
-    INTEGER(iwp) ::  ni        !< number of horizontal blocks
-    INTEGER(iwp) ::  nj        !< number of horizontal blocks
     INTEGER(iwp) ::  nk        !< number of points per vertical block
-    INTEGER(iwp) ::  imax      !< upper horizontal index
-    INTEGER(iwp) ::  jmax      !< upper horizontal index
 
     INTEGER(iwp) ::  color  !< grid point color, either red or black
     INTEGER(iwp) ::  i      !< index variable along x
@@ -952,6 +947,10 @@
     INTEGER(iwp) ::  save_nxl_mg  !< to save nxl_mg on coarsest level 1
     INTEGER(iwp) ::  save_nys_mg  !< to save nys_mg on coarsest level 1
 
+
+    INTEGER(iwp) ::  ix0, jy0  !< initialized horizontal parity origins
+    INTEGER(iwp) ::  khi, klo  !< starts of the two vertical color blocks
+    INTEGER(iwp) ::  parity    !< selects the vertical block for this column
 
     LOGICAL ::  use_fused_gpu  !< use the same-color device loop
 
@@ -1010,46 +1009,41 @@
 
              CALL cpu_log( log_point_s(36), 'redblack_no_unroll_f', 'start' )
 
-             ni = ( nxr_mg(l) - nxl_mg(l) + 2 ) / 2
-             nj = ( nyn_mg(l) - nys_mg(l) + 2 ) / 2
              nk = nzt_mg(l) / 2
-             imax = nxr_mg(l)
-             jmax = nyn_mg(l)
+             ix0 = ileft(1,color,l)
+             jy0 = jsouth(1,color,l)
+             khi = kbottom(1,color,l)
+             klo = kbottom(3,color,l)
 !
-!--          The four subsets update disjoint points of the same color. Neighbour reads use
-!--          the opposite color; a masked neighbour may instead read the point itself.
-!--          Initialized index tables include the coarsest-level rank parity adjustment.
-             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(4) VECTOR_LENGTH(64) &
+!--          Initialized starts include the coarsest-level rank parity adjustment.
+!--          Each horizontal point updates the contiguous vertical block of this color.
+             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) VECTOR_LENGTH(64) &
              !$ACC DEFAULT(PRESENT) &
-             !$ACC PRIVATE(i,j,k,km1,kp1,pkjip,pkjim,pkjpi,pkjmi,pkpji,pkmji)
-             DO  q = 1, 4
-                DO  ic = 0, ni-1
-                   DO  jc = 0, nj-1
-                      DO  kk = 0, nk-1
-                         i = ileft(q,color,l) + 2 * ic
-                         j = jsouth(q,color,l) + 2 * jc
-                         k = kbottom(q,color,l) + kk
-                         IF ( i > imax .OR. j > jmax )  CYCLE
-                         IF ( q <= 2 )  THEN
-                            km1 = k - ind_even_odd - 1
-                            kp1 = k - ind_even_odd
-                         ELSE
-                            km1 = k + ind_even_odd
-                            kp1 = k + ind_even_odd + 1
-                         ENDIF
-                         pkjip = MERGE( p_mg(k,j,i), p_mg(k,j,i+1), BTEST( gl(l)%flags(k,j,i), 5 ) )
-                         pkjim = MERGE( p_mg(k,j,i), p_mg(k,j,i-1), BTEST( gl(l)%flags(k,j,i), 4 ) )
-                         pkjpi = MERGE( p_mg(k,j,i), p_mg(k,j+1,i), BTEST( gl(l)%flags(k,j,i), 3 ) )
-                         pkjmi = MERGE( p_mg(k,j,i), p_mg(k,j-1,i), BTEST( gl(l)%flags(k,j,i), 2 ) )
-                         pkpji = MERGE( p_mg(k,j,i), p_mg(kp1,j,i), BTEST( gl(l)%flags(k,j,i), 1 ) )
-                         pkmji = MERGE( p_mg(k,j,i), p_mg(km1,j,i), BTEST( gl(l)%flags(k,j,i), 0 ) )
-                         p_mg(k,j,i) = 1.0_wp / f1_mg_b(k,l) *                                    &
-                                       ( rho_air_mg_b(k,l) * ddx2_mg(l) * ( pkjip + pkjim )       &
-                                       + rho_air_mg_b(k,l) * ddy2_mg(l) * ( pkjpi + pkjmi )       &
-                                       + f2_mg_b(k,l) * pkpji  + f3_mg_b(k,l) * pkmji             &
-                                       - f_mg(k,j,i)                                              &
-                                       )
-                      ENDDO
+             !$ACC PRIVATE(k,km1,kp1,parity,pkjip,pkjim,pkjpi,pkjmi,pkpji,pkmji)
+             DO  i = nxl_mg(l), nxr_mg(l)
+                DO  j = nys_mg(l), nyn_mg(l)
+                   DO  kk = 0, nk-1
+                      parity = IEOR( MODULO( i-ix0, 2 ), MODULO( j-jy0, 2 ) )
+                      k = MERGE( khi, klo, parity == 0 ) + kk
+                      IF ( parity == 0 )  THEN
+                         km1 = k - ind_even_odd - 1
+                         kp1 = k - ind_even_odd
+                      ELSE
+                         km1 = k + ind_even_odd
+                         kp1 = k + ind_even_odd + 1
+                      ENDIF
+                      pkjip = MERGE( p_mg(k,j,i), p_mg(k,j,i+1), BTEST( gl(l)%flags(k,j,i), 5 ) )
+                      pkjim = MERGE( p_mg(k,j,i), p_mg(k,j,i-1), BTEST( gl(l)%flags(k,j,i), 4 ) )
+                      pkjpi = MERGE( p_mg(k,j,i), p_mg(k,j+1,i), BTEST( gl(l)%flags(k,j,i), 3 ) )
+                      pkjmi = MERGE( p_mg(k,j,i), p_mg(k,j-1,i), BTEST( gl(l)%flags(k,j,i), 2 ) )
+                      pkpji = MERGE( p_mg(k,j,i), p_mg(kp1,j,i), BTEST( gl(l)%flags(k,j,i), 1 ) )
+                      pkmji = MERGE( p_mg(k,j,i), p_mg(km1,j,i), BTEST( gl(l)%flags(k,j,i), 0 ) )
+                      p_mg(k,j,i) = 1.0_wp / f1_mg_b(k,l) *                                    &
+                                    ( rho_air_mg_b(k,l) * ddx2_mg(l) * ( pkjip + pkjim )       &
+                                    + rho_air_mg_b(k,l) * ddy2_mg(l) * ( pkjpi + pkjmi )       &
+                                    + f2_mg_b(k,l) * pkpji  + f3_mg_b(k,l) * pkmji             &
+                                    - f_mg(k,j,i)                                              &
+                                    )
                    ENDDO
                 ENDDO
              ENDDO
