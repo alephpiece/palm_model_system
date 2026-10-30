@@ -93,6 +93,10 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE poismg_noopt
 
+#if defined(PALM_RB_HOST_STAGING) && defined(__parallel)
+    USE rb_buffer_cache_mod, ONLY: rb_buffers_release
+#endif
+
     USE arrays_3d,                                                                                 &
         ONLY:  d,                                                                                  &
                p_loc
@@ -307,6 +311,11 @@
 
     !$ACC END DATA
     DEALLOCATE( p3, r )
+
+#if defined(PALM_RB_HOST_STAGING) && defined(__parallel)
+    ! Each pressure solve owns its cached exchange buffers and device mappings.
+    CALL rb_buffers_release()
+#endif
 
  END SUBROUTINE poismg_noopt
 

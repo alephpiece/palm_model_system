@@ -200,6 +200,10 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE poismg
 
+#if defined(PALM_RB_HOST_STAGING) && defined(__parallel)
+    USE rb_buffer_cache_mod, ONLY: rb_buffers_release
+#endif
+
     USE arrays_3d,                                                                                 &
         ONLY:  d,                                                                                  &
                p_loc
@@ -430,6 +434,11 @@
 !
 !-- Reset the number of SOR-red-black iterations to the value set by user (or default).
     IF ( current_timestep_number <= ngsrb_initial_timesteps )  ngsrb = ngsrb_save
+
+#if defined(PALM_RB_HOST_STAGING) && defined(__parallel)
+    ! Each pressure solve owns its cached exchange buffers and device mappings.
+    CALL rb_buffers_release()
+#endif
 
     CALL cpu_log( log_point_s(29), 'poismg', 'stop' )
 

@@ -160,6 +160,7 @@ SOURCES = \
 	random_function_mod.f90 \
 	random_gauss.f90 \
 	random_generator_parallel_mod.f90 \
+	rb_buffer_cache_mod.f90 \
 	read_restart_data_mod.f90 \
 	restart_data_mpi_io_mod.f90 \
 	run_control.f90 \
@@ -683,6 +684,7 @@ dynamics_mod.o: \
 	surface_mod.o \
 	modules.o
 exchange_horiz_mod.o: \
+	rb_buffer_cache_mod.o \
 	cpulog_mod.o \
 	mod_kinds.o \
 	modules.o
@@ -1110,11 +1112,13 @@ poisfft_sm_mod.o: \
 	transpose_mod.o \
 	tridia_solver_mod.o
 poismg_mod.o: \
+	rb_buffer_cache_mod.o \
 	cpulog_mod.o \
 	exchange_horiz_mod.o \
 	mod_kinds.o \
 	modules.o
 poismg_noopt_mod.o: \
+	rb_buffer_cache_mod.o \
 	cpulog_mod.o \
 	exchange_horiz_mod.o \
 	mod_kinds.o \
@@ -1197,6 +1201,8 @@ random_generator_parallel_mod.o: \
 	mod_kinds.o \
 	modules.o \
 	posix_interface_mod.o
+rb_buffer_cache_mod.o: \
+	mod_kinds.o
 read_restart_data_mod.o: \
 	bulk_cloud_model_mod.o \
 	chem_modules.o \

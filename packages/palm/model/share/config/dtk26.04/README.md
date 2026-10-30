@@ -162,6 +162,7 @@ is in `%cpp_options`.
 | Surface, flux, and mixed-moment statistics | `PALM_SURFACE_STATS_REDUCTION`, `PALM_FLOW_FLUX_SHARDS`, `PALM_FLOW_MIXED_SHARDS` |
 | Humidity, u/v/potential-temperature, and perturbation-energy statistics | `PALM_FLOW_HUMIDITY_SHARDS`, `PALM_FLOW_UVPT_SHARDS`, `PALM_FLOW_ENERGY_SHARDS` |
 | Pressure mean, soil, and TCM | `PALM_PRESSURE_MEAN_SHARDS`, `PALM_SOIL_CONDUCTIVITY_MAPPING`, `PALM_TCM_DIFFUSIVITY_ORGANIZATION` |
+| Red-black halo exchange through persistent host buffers | `PALM_RB_HOST_STAGING` |
 | Perturbation-energy mapping and TKE shear terms | `PALM_FLOW_ENERGY_MAPPING`, `PALM_TKE_SHEAR_DIAGONAL`, `PALM_TKE_SHEAR_VECTOR64` |
 | Equation vector width and humidity update | `PALM_EQUATION_VECTOR64`, `PALM_Q_UPDATE_COLLAPSE3` |
 | GPU FFT | `__hip_fft`, linked with hipFFT. Select only one of `__hip_fft`, `__cuda_fft`, and `__fftw`. |
