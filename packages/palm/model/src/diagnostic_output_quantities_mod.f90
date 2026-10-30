@@ -96,6 +96,8 @@
 #if defined( _OPENACC )
     USE control_parameters,                                                                        &
         ONLY:  enable_openacc
+
+    USE openacc, ONLY: acc_is_present
 #endif
 
     USE exchange_horiz_mod,                                                                        &
@@ -3544,6 +3546,32 @@
 
 
 !     CALL cpu_log( log_point(41), 'calculate_quantities', 'start' )
+
+#if defined( _OPENACC )
+!
+!-- Temperature, humidity and horizontal wind diagnostics are calculated on the host.
+!-- Initial output can precede device allocation, so only update mapped fields.
+    IF ( enable_openacc )  THEN
+       IF ( ANY( do_all == 'ta' )  .OR.  ANY( do_all == 'rh' ) )  THEN
+          IF ( acc_is_present( pt ) )  THEN
+             !$ACC UPDATE SELF(pt)
+          ENDIF
+       ENDIF
+       IF ( humidity  .AND.  ANY( do_all == 'rh' ) )  THEN
+          IF ( acc_is_present( q ) )  THEN
+             !$ACC UPDATE SELF(q)
+          ENDIF
+       ENDIF
+       IF ( ANY( do_all == 'wspeed' )  .OR.  ANY( do_all == 'wdir' ) )  THEN
+          IF ( acc_is_present( u ) )  THEN
+             !$ACC UPDATE SELF(u)
+          ENDIF
+          IF ( acc_is_present( v ) )  THEN
+             !$ACC UPDATE SELF(v)
+          ENDIF
+       ENDIF
+    ENDIF
+#endif
 
 !
 !-- Save timestep number to check in time_integration if doq_calculate has been called already,
