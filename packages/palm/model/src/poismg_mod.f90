@@ -76,6 +76,11 @@
                nzb,                                                                                &
                nzt
 
+#if defined(PALM_RB_IPC) && defined(PALM_RB_HOST_STAGING) && defined(__parallel) && defined(_OPENACC)
+    USE control_parameters, ONLY: y_shift
+    USE ipc_exchange_mod, ONLY: ipc_setup,ipc_exchange,ipc_finish_redblack,ipc_release
+#endif
+
     USE kinds
 
     USE pegrid
@@ -190,6 +195,9 @@
     END INTERFACE sort_k_to_even_odd_blocks
 
     PUBLIC
+#if defined(PALM_RB_IPC) && defined(PALM_RB_HOST_STAGING) && defined(__parallel) && defined(_OPENACC)
+    PRIVATE :: ipc_setup,ipc_exchange,ipc_finish_redblack,ipc_release
+#endif
 
  CONTAINS
 
@@ -437,6 +445,9 @@
 
 #if defined(PALM_RB_HOST_STAGING) && defined(__parallel)
     ! Each pressure solve owns its cached exchange buffers and device mappings.
+#if defined(PALM_RB_IPC) && defined(_OPENACC)
+    CALL ipc_release()
+#endif
     CALL rb_buffers_release()
 #endif
 
@@ -961,6 +972,11 @@
     INTEGER(iwp) ::  khi, klo  !< starts of the two vertical color blocks
     INTEGER(iwp) ::  parity    !< selects the vertical block for this column
 
+#if defined(PALM_RB_IPC) && defined(PALM_RB_HOST_STAGING) && defined(__parallel) && defined(_OPENACC)
+    LOGICAL :: use_peer_exchange,peer_local_eligible
+    INTEGER(iwp) :: peer_neighbors(4),peer_hrecv(2,2,4),peer_kbot(2,2,4),peer_ktop(2,2,4)
+#endif
+
     LOGICAL ::  use_fused_gpu  !< use the same-color device loop
 
     LOGICAL ::  adjust_lower_i_index  !< adjust lower limit of i loop in case of odd number of grid points
@@ -1010,6 +1026,49 @@
 
 !    WRITE(9,*) ' '
 !    WRITE(9,*) '*** level = ', l
+#if defined(PALM_RB_IPC) && defined(PALM_RB_HOST_STAGING) && defined(__parallel) && defined(_OPENACC)
+
+    use_peer_exchange = .FALSE.
+    IF (maximum_grid_level == 1 .AND. npex == 2 .AND. npey == 2 .AND. mg_switch_to_pe0_level < 0) THEN
+       peer_local_eligible = use_fused_gpu .AND. .NOT.mg_switch_to_pe0 .AND. y_shift == 0 .AND. &
+                        (ngp_xz(l) >= 8192 .OR. ngp_yz(l) >= 8192) .AND. &
+                        nxl_mg(l) == nxl .AND. nxr_mg(l) == nxr .AND. &
+                        nys_mg(l) == nys .AND. nyn_mg(l) == nyn .AND. nzt_mg(l) == nzt .AND. &
+                        nzb == 0 .AND. ind_even_odd == nzt/2 .AND. &
+                        ((psouth == MPI_PROC_NULL) .EQV. (bc_dirichlet_s .OR. bc_radiation_s)) .AND. &
+                        ((pnorth == MPI_PROC_NULL) .EQV. (bc_dirichlet_n .OR. bc_radiation_n)) .AND. &
+                        ((pleft == MPI_PROC_NULL) .EQV. (bc_dirichlet_l .OR. bc_radiation_l)) .AND. &
+                        ((pright == MPI_PROC_NULL) .EQV. (bc_dirichlet_r .OR. bc_radiation_r))
+       peer_neighbors = [psouth,pnorth,pleft,pright]
+       peer_hrecv = 0; peer_kbot = 0; peer_ktop = 0
+       IF (peer_local_eligible) THEN
+          IF (peer_neighbors(1) /= MPI_PROC_NULL) THEN
+             peer_hrecv(:,:,1) = ileft_for_nys_recv(:,:,l)
+             peer_kbot(:,:,1) = kbottom_for_nys_recv(:,:,l)
+             peer_ktop(:,:,1) = ktop_for_nys_recv(:,:,l)
+          ENDIF
+          IF (peer_neighbors(2) /= MPI_PROC_NULL) THEN
+             peer_hrecv(:,:,2) = ileft_for_nyn_recv(:,:,l)
+             peer_kbot(:,:,2) = kbottom_for_nyn_recv(:,:,l)
+             peer_ktop(:,:,2) = ktop_for_nyn_recv(:,:,l)
+          ENDIF
+          IF (peer_neighbors(3) /= MPI_PROC_NULL) THEN
+             peer_hrecv(:,:,3) = jsouth_for_nxl_recv(:,:,l)
+             peer_kbot(:,:,3) = kbottom_for_nxl_recv(:,:,l)
+             peer_ktop(:,:,3) = ktop_for_nxl_recv(:,:,l)
+          ENDIF
+          IF (peer_neighbors(4) /= MPI_PROC_NULL) THEN
+             peer_hrecv(:,:,4) = jsouth_for_nxr_recv(:,:,l)
+             peer_kbot(:,:,4) = kbottom_for_nxr_recv(:,:,l)
+             peer_ktop(:,:,4) = ktop_for_nxr_recv(:,:,l)
+          ENDIF
+       ENDIF
+       ! The collective decision and mappings are cached until this solve exits.
+       CALL ipc_setup(p_mg,comm2d,nzb,nzt,nxl,nxr,nys,nyn,peer_neighbors, &
+                      peer_hrecv,peer_kbot,peer_ktop,peer_local_eligible,use_peer_exchange)
+    ENDIF
+#endif
+
     DO  n = 1, ngsrb
 
        DO  color = 1, 2
@@ -1437,6 +1496,13 @@
 !--       performance.
 !--       Levels where total domain is on PE0 do not require optimized exchange.
 #if defined( __parallel )
+#if defined(PALM_RB_IPC) && defined(PALM_RB_HOST_STAGING) && defined(__parallel) && defined(_OPENACC)
+          IF (use_peer_exchange) THEN
+             CALL cpu_log(log_point_s(47),'exchange_horiz_rb','start')
+             CALL ipc_exchange(p_mg,color)
+             CALL cpu_log(log_point_s(47),'exchange_horiz_rb','stop')
+          ELSE
+#endif
           IF ( ( ngp_xz(l) >= 8192  .OR.  ngp_yz(l) >= 8192 )  .AND.  .NOT. mg_switch_to_pe0  .AND.  &
                npex /= 1  .AND.  npey /= 1  )                                                      &
           THEN
@@ -1469,6 +1535,9 @@
              CALL exchange_horiz( p_mg, 1, grid_level = grid_level,                                &
                                   mg_switch_to_pe0 = mg_switch_to_pe0 )
           ENDIF
+#if defined(PALM_RB_IPC) && defined(PALM_RB_HOST_STAGING) && defined(__parallel) && defined(_OPENACC)
+          ENDIF
+#endif
 #else
           CALL exchange_horiz( p_mg, 1, grid_level = grid_level,                                   &
                                mg_switch_to_pe0 = mg_switch_to_pe0 )
@@ -1531,6 +1600,12 @@
        ENDDO
 
     ENDDO
+
+#if defined(PALM_RB_IPC) && defined(PALM_RB_HOST_STAGING) && defined(__parallel) && defined(_OPENACC)
+    IF (use_peer_exchange) THEN
+       CALL ipc_finish_redblack()
+    ENDIF
+#endif
 
 !
 !-- Reset lower index limits to their standard values (may happen on coarsest levels only)

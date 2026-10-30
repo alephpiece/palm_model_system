@@ -160,6 +160,7 @@ SOURCES = \
 	random_function_mod.f90 \
 	random_gauss.f90 \
 	random_generator_parallel_mod.f90 \
+	ipc_exchange_mod.f90 \
 	rb_buffer_cache_mod.f90 \
 	read_restart_data_mod.f90 \
 	restart_data_mpi_io_mod.f90 \
@@ -833,6 +834,8 @@ init_slope.o: \
 init_vertical_profiles.o: \
 	modules.o \
 	mod_kinds.o
+ipc_exchange_mod.o: \
+	mod_kinds.o
 lagrangian_particle_model_mod.o: \
 	basic_constants_and_equations_mod.o \
 	cpulog_mod.o \
@@ -1112,6 +1115,7 @@ poisfft_sm_mod.o: \
 	transpose_mod.o \
 	tridia_solver_mod.o
 poismg_mod.o: \
+	ipc_exchange_mod.o \
 	rb_buffer_cache_mod.o \
 	cpulog_mod.o \
 	exchange_horiz_mod.o \

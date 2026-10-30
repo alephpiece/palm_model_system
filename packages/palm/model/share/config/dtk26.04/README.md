@@ -163,9 +163,18 @@ is in `%cpp_options`.
 | Humidity, u/v/potential-temperature, and perturbation-energy statistics | `PALM_FLOW_HUMIDITY_SHARDS`, `PALM_FLOW_UVPT_SHARDS`, `PALM_FLOW_ENERGY_SHARDS` |
 | Pressure mean, soil, and TCM | `PALM_PRESSURE_MEAN_SHARDS`, `PALM_SOIL_CONDUCTIVITY_MAPPING`, `PALM_TCM_DIFFUSIVITY_ORGANIZATION` |
 | Red-black halo exchange through persistent host buffers | `PALM_RB_HOST_STAGING` |
+| Single-node pressure halo reads through HIP IPC | `PALM_RB_IPC` |
 | Perturbation-energy mapping and TKE shear terms | `PALM_FLOW_ENERGY_MAPPING`, `PALM_TKE_SHEAR_DIAGONAL`, `PALM_TKE_SHEAR_VECTOR64` |
 | Equation vector width and humidity update | `PALM_EQUATION_VECTOR64`, `PALM_Q_UPDATE_COLLAPSE3` |
 | GPU FFT | `__hip_fft`, linked with hipFFT. Select only one of `__hip_fft`, `__cuda_fft`, and `__fftw`. |
+
+`PALM_RB_IPC` selects peer-device pressure reads for the GPU red-black path on
+one node with a uniform 2×2 decomposition, one multigrid level, even vertical
+extent, no coarse-grid aggregation and no shifted periodic boundary. It preserves
+the original colored halo and corner updates. Other layouts or unavailable HIP
+IPC export/import capability use the existing host-staging exchange. The choice
+and peer mappings last for one pressure solve. Remove `-DPALM_RB_IPC` and rebuild
+to use host staging throughout. CPU and CUDA configurations keep their existing paths.
 
 ### FFT execution controls
 
