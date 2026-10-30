@@ -2553,6 +2553,9 @@
     END SELECT
 
     IF ( found  .AND.  .NOT. resorted )  THEN
+!
+!--    Host-computed diagnostics need a temporary device copy for output reordering.
+       !$ACC DATA COPYIN(to_be_resorted) IF(enable_openacc)
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
        !$ACC DEFAULT(PRESENT) IF(enable_openacc)
        DO  i = nxl, nxr
@@ -2562,6 +2565,7 @@
              ENDDO
           ENDDO
        ENDDO
+       !$ACC END DATA
     ENDIF
 
  END SUBROUTINE doq_output_2d
@@ -2850,6 +2854,9 @@
     END SELECT
 
     IF ( found  .AND.  .NOT. resorted )  THEN
+!
+!--    Host-computed diagnostics need a temporary device copy for output reordering.
+       !$ACC DATA COPYIN(to_be_resorted) IF(enable_openacc)
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
        !$ACC DEFAULT(PRESENT) IF(enable_openacc)
        DO  i = nxl, nxr
@@ -2859,6 +2866,7 @@
              ENDDO
           ENDDO
        ENDDO
+       !$ACC END DATA
        resorted = .TRUE.
     ENDIF
 
