@@ -1,6 +1,6 @@
-# Building and running on BW-series DCUs with DTK 26.04
+# Building and running on DCUs with DTK 26.04
 
-This directory contains an OpenACC build template for BW-series DCUs with
+This directory contains an OpenACC build template for DCUs with
 DTK 26.04, GPU optimizations, and hipFFT support. Run the commands below inside
 your container. Adjust the paths and target architecture for your installation,
 and set `enable_openacc = .TRUE.` in the case input to run on the GPU.
@@ -13,7 +13,7 @@ Required software: DTK 26.04 (flang, OpenACC, and hipFFT), Open MPI built with
 that Fortran toolchain, compatible parallel NetCDF-C and NetCDF-Fortran libraries,
 GCC, make, Python 3, and Bash.
 
-The template defaults to BW100 (`gfx936`). For other BW models, update
+The template defaults to BW100 (`gfx936`). For other DCU models, update
 `--offload-arch` in both the compiler and linker options to match the device.
 Use your installation paths in the template and environment variables:
 
@@ -121,11 +121,12 @@ palmrun -r test -c dcu -a 'd3#' -X 8 -T 1 -O 8 -w 1 -v -z
 ```
 
 For two GPUs and four MPI ranks, set both `npex` and `npey` to 2 in the input.
+The following launch uses UCX on a single DCU node.
 Replace `%execute_command` with the line below, using your source directory
 in place of `/absolute/path/to/palm`:
 
 ```text
-%execute_command /opt/mpi-flang/bin/mpirun --allow-run-as-root --mca coll ^hcoll -n {{mpi_tasks}} /absolute/path/to/palm/packages/palm/model/share/config/dtk26.04/rank-gpu.sh ./palm
+%execute_command env UCX_MEMTYPE_CACHE=n /opt/mpi-flang/bin/mpirun --allow-run-as-root --mca coll ^hcoll --mca pml ucx --mca coll_sm_priority 100 --mca io romio341 -n {{mpi_tasks}} /absolute/path/to/palm/packages/palm/model/share/config/dtk26.04/rank-gpu.sh ./palm
 ```
 
 ```bash
@@ -137,6 +138,20 @@ palmrun -r test -c dcu -a 'd3#' -X 32 -T 4 -O 8 -w 4 -v -z
 0 and 2 to the first GPU, and ranks 1 and 3 to the second. Each rank sees one GPU
 before MPI initialization, so PALM reports `ACC-devices per node: 1`.
 Choose CPU bindings that match the container's available CPUs and NUMA layout.
+
+This launch uses UCX for MPI point-to-point traffic, the `sm` component for
+collectives, and ROMIO for MPI-I/O. It requires ROCm-enabled MPI/UCX and the `sm` and
+`romio341` components. `UCX_MEMTYPE_CACHE=n` avoids cached misclassification of
+device buffers. Set it before `mpirun`, as shown above. These MPI settings are
+independent of PALM's pressure HIP IPC path. Changing collective algorithms can
+change floating-point reduction order and the subsequent solution trajectory.
+
+For an OB1 control, use the following launch command with the same resource
+and GPU settings:
+
+```text
+%execute_command /opt/mpi-flang/bin/mpirun --allow-run-as-root --mca coll ^hcoll --mca pml ob1 --mca coll_sm_priority 0 --mca io ompio -n {{mpi_tasks}} /absolute/path/to/palm/packages/palm/model/share/config/dtk26.04/rank-gpu.sh ./palm
+```
 
 The launcher and rank scripts must preserve the `OMP_NUM_THREADS` value set
 by `-O`. In DTK 26.04, this value also affects the default width of some OpenACC
