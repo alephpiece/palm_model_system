@@ -92,6 +92,7 @@
                disturbance_created,                                                                &
                disturbance_energy_limit,                                                           &
                dist_range,                                                                         &
+               doav_n,                                                                             &
                dopr_n,                                                                             &
                do_sum,                                                                             &
                dt_3d,                                                                              &
@@ -1393,7 +1394,10 @@
        THEN
           time_do_sla = time_do_sla + dt_3d
           IF ( time_do_sla >= dt_averaging_input )  THEN
-             IF ( current_timestep_number > timestep_number_at_prev_calc )                         &
+!
+!--          Diagnostic quantities are only needed if a field is being averaged.
+             IF ( doav_n > 0  .AND.                                                                &
+                  current_timestep_number > timestep_number_at_prev_calc )                         &
                 CALL doq_calculate
 
              CALL sum_up_3d_data
