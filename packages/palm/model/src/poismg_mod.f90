@@ -76,6 +76,11 @@
                nzb,                                                                                &
                nzt
 
+#if defined(PALM_RB_IPC) && defined(PALM_RB_HOST_STAGING) && defined(__parallel) && defined(_OPENACC)
+    USE control_parameters, ONLY: y_shift
+    USE ipc_exchange_mod, ONLY: ipc_setup,ipc_exchange,ipc_finish_redblack,ipc_release
+#endif
+
     USE kinds
 
     USE pegrid
@@ -190,6 +195,9 @@
     END INTERFACE sort_k_to_even_odd_blocks
 
     PUBLIC
+#if defined(PALM_RB_IPC) && defined(PALM_RB_HOST_STAGING) && defined(__parallel) && defined(_OPENACC)
+    PRIVATE :: ipc_setup,ipc_exchange,ipc_finish_redblack,ipc_release
+#endif
 
  CONTAINS
 
@@ -199,6 +207,10 @@
 !> Solves the Poisson equation for the perturbation pressure with a multigrid V- or W-Cycle scheme.
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE poismg
+
+#if defined(PALM_RB_HOST_STAGING) && defined(__parallel)
+    USE rb_buffer_cache_mod, ONLY: rb_buffers_release
+#endif
 
     USE arrays_3d,                                                                                 &
         ONLY:  d,                                                                                  &
@@ -430,6 +442,14 @@
 !
 !-- Reset the number of SOR-red-black iterations to the value set by user (or default).
     IF ( current_timestep_number <= ngsrb_initial_timesteps )  ngsrb = ngsrb_save
+
+#if defined(PALM_RB_HOST_STAGING) && defined(__parallel)
+    ! Each pressure solve owns its cached exchange buffers and device mappings.
+#if defined(PALM_RB_IPC) && defined(_OPENACC)
+    CALL ipc_release()
+#endif
+    CALL rb_buffers_release()
+#endif
 
     CALL cpu_log( log_point_s(29), 'poismg', 'stop' )
 
@@ -931,12 +951,7 @@
     IMPLICIT NONE
 
     INTEGER(iwp) ::  kk        !< vertical block index
-    INTEGER(iwp) ::  q         !< same-color subset
-    INTEGER(iwp) ::  ni        !< number of horizontal blocks
-    INTEGER(iwp) ::  nj        !< number of horizontal blocks
     INTEGER(iwp) ::  nk        !< number of points per vertical block
-    INTEGER(iwp) ::  imax      !< upper horizontal index
-    INTEGER(iwp) ::  jmax      !< upper horizontal index
 
     INTEGER(iwp) ::  color  !< grid point color, either red or black
     INTEGER(iwp) ::  i      !< index variable along x
@@ -952,6 +967,15 @@
     INTEGER(iwp) ::  save_nxl_mg  !< to save nxl_mg on coarsest level 1
     INTEGER(iwp) ::  save_nys_mg  !< to save nys_mg on coarsest level 1
 
+
+    INTEGER(iwp) ::  ix0, jy0  !< initialized horizontal parity origins
+    INTEGER(iwp) ::  khi, klo  !< starts of the two vertical color blocks
+    INTEGER(iwp) ::  parity    !< selects the vertical block for this column
+
+#if defined(PALM_RB_IPC) && defined(PALM_RB_HOST_STAGING) && defined(__parallel) && defined(_OPENACC)
+    LOGICAL :: use_peer_exchange,peer_local_eligible
+    INTEGER(iwp) :: peer_neighbors(4),peer_hrecv(2,2,4),peer_kbot(2,2,4),peer_ktop(2,2,4)
+#endif
 
     LOGICAL ::  use_fused_gpu  !< use the same-color device loop
 
@@ -1002,6 +1026,49 @@
 
 !    WRITE(9,*) ' '
 !    WRITE(9,*) '*** level = ', l
+#if defined(PALM_RB_IPC) && defined(PALM_RB_HOST_STAGING) && defined(__parallel) && defined(_OPENACC)
+
+    use_peer_exchange = .FALSE.
+    IF (maximum_grid_level == 1 .AND. npex == 2 .AND. npey == 2 .AND. mg_switch_to_pe0_level < 0) THEN
+       peer_local_eligible = use_fused_gpu .AND. .NOT.mg_switch_to_pe0 .AND. y_shift == 0 .AND. &
+                        (ngp_xz(l) >= 8192 .OR. ngp_yz(l) >= 8192) .AND. &
+                        nxl_mg(l) == nxl .AND. nxr_mg(l) == nxr .AND. &
+                        nys_mg(l) == nys .AND. nyn_mg(l) == nyn .AND. nzt_mg(l) == nzt .AND. &
+                        nzb == 0 .AND. ind_even_odd == nzt/2 .AND. &
+                        ((psouth == MPI_PROC_NULL) .EQV. (bc_dirichlet_s .OR. bc_radiation_s)) .AND. &
+                        ((pnorth == MPI_PROC_NULL) .EQV. (bc_dirichlet_n .OR. bc_radiation_n)) .AND. &
+                        ((pleft == MPI_PROC_NULL) .EQV. (bc_dirichlet_l .OR. bc_radiation_l)) .AND. &
+                        ((pright == MPI_PROC_NULL) .EQV. (bc_dirichlet_r .OR. bc_radiation_r))
+       peer_neighbors = [psouth,pnorth,pleft,pright]
+       peer_hrecv = 0; peer_kbot = 0; peer_ktop = 0
+       IF (peer_local_eligible) THEN
+          IF (peer_neighbors(1) /= MPI_PROC_NULL) THEN
+             peer_hrecv(:,:,1) = ileft_for_nys_recv(:,:,l)
+             peer_kbot(:,:,1) = kbottom_for_nys_recv(:,:,l)
+             peer_ktop(:,:,1) = ktop_for_nys_recv(:,:,l)
+          ENDIF
+          IF (peer_neighbors(2) /= MPI_PROC_NULL) THEN
+             peer_hrecv(:,:,2) = ileft_for_nyn_recv(:,:,l)
+             peer_kbot(:,:,2) = kbottom_for_nyn_recv(:,:,l)
+             peer_ktop(:,:,2) = ktop_for_nyn_recv(:,:,l)
+          ENDIF
+          IF (peer_neighbors(3) /= MPI_PROC_NULL) THEN
+             peer_hrecv(:,:,3) = jsouth_for_nxl_recv(:,:,l)
+             peer_kbot(:,:,3) = kbottom_for_nxl_recv(:,:,l)
+             peer_ktop(:,:,3) = ktop_for_nxl_recv(:,:,l)
+          ENDIF
+          IF (peer_neighbors(4) /= MPI_PROC_NULL) THEN
+             peer_hrecv(:,:,4) = jsouth_for_nxr_recv(:,:,l)
+             peer_kbot(:,:,4) = kbottom_for_nxr_recv(:,:,l)
+             peer_ktop(:,:,4) = ktop_for_nxr_recv(:,:,l)
+          ENDIF
+       ENDIF
+       ! The collective decision and mappings are cached until this solve exits.
+       CALL ipc_setup(p_mg,comm2d,nzb,nzt,nxl,nxr,nys,nyn,peer_neighbors, &
+                      peer_hrecv,peer_kbot,peer_ktop,peer_local_eligible,use_peer_exchange)
+    ENDIF
+#endif
+
     DO  n = 1, ngsrb
 
        DO  color = 1, 2
@@ -1010,46 +1077,41 @@
 
              CALL cpu_log( log_point_s(36), 'redblack_no_unroll_f', 'start' )
 
-             ni = ( nxr_mg(l) - nxl_mg(l) + 2 ) / 2
-             nj = ( nyn_mg(l) - nys_mg(l) + 2 ) / 2
              nk = nzt_mg(l) / 2
-             imax = nxr_mg(l)
-             jmax = nyn_mg(l)
+             ix0 = ileft(1,color,l)
+             jy0 = jsouth(1,color,l)
+             khi = kbottom(1,color,l)
+             klo = kbottom(3,color,l)
 !
-!--          The four subsets update disjoint points of the same color. Neighbour reads use
-!--          the opposite color; a masked neighbour may instead read the point itself.
-!--          Initialized index tables include the coarsest-level rank parity adjustment.
-             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(4) VECTOR_LENGTH(64) &
+!--          Initialized starts include the coarsest-level rank parity adjustment.
+!--          Each horizontal point updates the contiguous vertical block of this color.
+             !$ACC PARALLEL LOOP GANG VECTOR COLLAPSE(3) VECTOR_LENGTH(64) &
              !$ACC DEFAULT(PRESENT) &
-             !$ACC PRIVATE(i,j,k,km1,kp1,pkjip,pkjim,pkjpi,pkjmi,pkpji,pkmji)
-             DO  q = 1, 4
-                DO  ic = 0, ni-1
-                   DO  jc = 0, nj-1
-                      DO  kk = 0, nk-1
-                         i = ileft(q,color,l) + 2 * ic
-                         j = jsouth(q,color,l) + 2 * jc
-                         k = kbottom(q,color,l) + kk
-                         IF ( i > imax .OR. j > jmax )  CYCLE
-                         IF ( q <= 2 )  THEN
-                            km1 = k - ind_even_odd - 1
-                            kp1 = k - ind_even_odd
-                         ELSE
-                            km1 = k + ind_even_odd
-                            kp1 = k + ind_even_odd + 1
-                         ENDIF
-                         pkjip = MERGE( p_mg(k,j,i), p_mg(k,j,i+1), BTEST( gl(l)%flags(k,j,i), 5 ) )
-                         pkjim = MERGE( p_mg(k,j,i), p_mg(k,j,i-1), BTEST( gl(l)%flags(k,j,i), 4 ) )
-                         pkjpi = MERGE( p_mg(k,j,i), p_mg(k,j+1,i), BTEST( gl(l)%flags(k,j,i), 3 ) )
-                         pkjmi = MERGE( p_mg(k,j,i), p_mg(k,j-1,i), BTEST( gl(l)%flags(k,j,i), 2 ) )
-                         pkpji = MERGE( p_mg(k,j,i), p_mg(kp1,j,i), BTEST( gl(l)%flags(k,j,i), 1 ) )
-                         pkmji = MERGE( p_mg(k,j,i), p_mg(km1,j,i), BTEST( gl(l)%flags(k,j,i), 0 ) )
-                         p_mg(k,j,i) = 1.0_wp / f1_mg_b(k,l) *                                    &
-                                       ( rho_air_mg_b(k,l) * ddx2_mg(l) * ( pkjip + pkjim )       &
-                                       + rho_air_mg_b(k,l) * ddy2_mg(l) * ( pkjpi + pkjmi )       &
-                                       + f2_mg_b(k,l) * pkpji  + f3_mg_b(k,l) * pkmji             &
-                                       - f_mg(k,j,i)                                              &
-                                       )
-                      ENDDO
+             !$ACC PRIVATE(k,km1,kp1,parity,pkjip,pkjim,pkjpi,pkjmi,pkpji,pkmji)
+             DO  i = nxl_mg(l), nxr_mg(l)
+                DO  j = nys_mg(l), nyn_mg(l)
+                   DO  kk = 0, nk-1
+                      parity = IEOR( MODULO( i-ix0, 2 ), MODULO( j-jy0, 2 ) )
+                      k = MERGE( khi, klo, parity == 0 ) + kk
+                      IF ( parity == 0 )  THEN
+                         km1 = k - ind_even_odd - 1
+                         kp1 = k - ind_even_odd
+                      ELSE
+                         km1 = k + ind_even_odd
+                         kp1 = k + ind_even_odd + 1
+                      ENDIF
+                      pkjip = MERGE( p_mg(k,j,i), p_mg(k,j,i+1), BTEST( gl(l)%flags(k,j,i), 5 ) )
+                      pkjim = MERGE( p_mg(k,j,i), p_mg(k,j,i-1), BTEST( gl(l)%flags(k,j,i), 4 ) )
+                      pkjpi = MERGE( p_mg(k,j,i), p_mg(k,j+1,i), BTEST( gl(l)%flags(k,j,i), 3 ) )
+                      pkjmi = MERGE( p_mg(k,j,i), p_mg(k,j-1,i), BTEST( gl(l)%flags(k,j,i), 2 ) )
+                      pkpji = MERGE( p_mg(k,j,i), p_mg(kp1,j,i), BTEST( gl(l)%flags(k,j,i), 1 ) )
+                      pkmji = MERGE( p_mg(k,j,i), p_mg(km1,j,i), BTEST( gl(l)%flags(k,j,i), 0 ) )
+                      p_mg(k,j,i) = 1.0_wp / f1_mg_b(k,l) *                                    &
+                                    ( rho_air_mg_b(k,l) * ddx2_mg(l) * ( pkjip + pkjim )       &
+                                    + rho_air_mg_b(k,l) * ddy2_mg(l) * ( pkjpi + pkjmi )       &
+                                    + f2_mg_b(k,l) * pkpji  + f3_mg_b(k,l) * pkmji             &
+                                    - f_mg(k,j,i)                                              &
+                                    )
                    ENDDO
                 ENDDO
              ENDDO
@@ -1434,6 +1496,13 @@
 !--       performance.
 !--       Levels where total domain is on PE0 do not require optimized exchange.
 #if defined( __parallel )
+#if defined(PALM_RB_IPC) && defined(PALM_RB_HOST_STAGING) && defined(__parallel) && defined(_OPENACC)
+          IF (use_peer_exchange) THEN
+             CALL cpu_log(log_point_s(47),'exchange_horiz_rb','start')
+             CALL ipc_exchange(p_mg,color)
+             CALL cpu_log(log_point_s(47),'exchange_horiz_rb','stop')
+          ELSE
+#endif
           IF ( ( ngp_xz(l) >= 8192  .OR.  ngp_yz(l) >= 8192 )  .AND.  .NOT. mg_switch_to_pe0  .AND.  &
                npex /= 1  .AND.  npey /= 1  )                                                      &
           THEN
@@ -1466,6 +1535,9 @@
              CALL exchange_horiz( p_mg, 1, grid_level = grid_level,                                &
                                   mg_switch_to_pe0 = mg_switch_to_pe0 )
           ENDIF
+#if defined(PALM_RB_IPC) && defined(PALM_RB_HOST_STAGING) && defined(__parallel) && defined(_OPENACC)
+          ENDIF
+#endif
 #else
           CALL exchange_horiz( p_mg, 1, grid_level = grid_level,                                   &
                                mg_switch_to_pe0 = mg_switch_to_pe0 )
@@ -1528,6 +1600,12 @@
        ENDDO
 
     ENDDO
+
+#if defined(PALM_RB_IPC) && defined(PALM_RB_HOST_STAGING) && defined(__parallel) && defined(_OPENACC)
+    IF (use_peer_exchange) THEN
+       CALL ipc_finish_redblack()
+    ENDIF
+#endif
 
 !
 !-- Reset lower index limits to their standard values (may happen on coarsest levels only)

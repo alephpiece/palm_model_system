@@ -647,6 +647,10 @@
                                ktop_for_nyn_recv, ktop_for_nxl_send, ktop_for_nxl_recv,            &
                                ktop_for_nxr_send, ktop_for_nxr_recv )
 
+#if defined(PALM_RB_HOST_STAGING)
+    USE rb_buffer_cache_mod, ONLY: rb_buffers_get
+#endif
+
     USE control_parameters,                                                                        &
         ONLY:  bc_lr_cyc,                                                                          &
                bc_ns_cyc
@@ -736,10 +740,17 @@
     REAL(wp), DIMENSION(nzb:nzt+1,nys-nbgp_local:nyn+nbgp_local,                                   &
                         nxl-nbgp_local:nxr+nbgp_local) ::  ar !< 3d-array for which exchange is done
 
+#if defined(PALM_RB_HOST_STAGING)
+    REAL(wp), POINTER, CONTIGUOUS :: recvbuf1(:,:)
+    REAL(wp), POINTER, CONTIGUOUS :: recvbuf2(:,:)
+    REAL(wp), POINTER, CONTIGUOUS :: sendbuf1(:,:)
+    REAL(wp), POINTER, CONTIGUOUS :: sendbuf2(:,:)
+#else
     REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  recvbuf1  !< buffer for receiving contiguous ghost layer data
     REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  recvbuf2  !< buffer for receiving contiguous ghost layer data
     REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  sendbuf1  !< buffer for sending contiguous ghost layer data
     REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  sendbuf2  !< buffer for sending contiguous ghost layer data
+#endif
 
 
     CALL cpu_log( log_point_s(47), 'exchange_horiz_rb', 'start' )
@@ -799,11 +810,15 @@
 !--    Only 2d-arrays are required since number of ghost layers is limited to one.
        nxr_rb = ( nxr - nxl ) / 2
 
+#if defined(PALM_RB_HOST_STAGING)
+       CALL rb_buffers_get(1,nzb+1,nzt,0,nxr_rb,lacc,recvbuf1,recvbuf2,sendbuf1,sendbuf2)
+#else
        ALLOCATE( recvbuf1(nzb+1:nzt,0:nxr_rb) )
        ALLOCATE( recvbuf2(nzb+1:nzt,0:nxr_rb) )
        ALLOCATE( sendbuf1(nzb+1:nzt,0:nxr_rb) )
        ALLOCATE( sendbuf2(nzb+1:nzt,0:nxr_rb) )
        !$ACC DATA CREATE(recvbuf1,recvbuf2,sendbuf1,sendbuf2) IF(lacc)
+#endif
 
        bufsize = ( nzt - nzb ) * ( nxr_rb + 1 )
 
@@ -846,28 +861,52 @@
 
 !
 !--    Send south boundary, receive north one (asynchronous), only red or black points.
+#if defined( PALM_RB_HOST_STAGING )
+       !$ACC UPDATE SELF(sendbuf1) IF(lacc .AND. south_pe /= MPI_PROC_NULL)
+       !$ACC UPDATE SELF(sendbuf2) IF(lacc .AND. north_pe /= MPI_PROC_NULL)
+#endif
+#if !defined( PALM_RB_HOST_STAGING )
        !$ACC HOST_DATA USE_DEVICE(sendbuf1) IF(lacc)
+#endif
        CALL MPI_ISEND( sendbuf1(nzb+1,0), bufsize, MPI_REAL, south_pe, req_count, communicator,    &
                        req(req_count+1), ierr )
+#if !defined( PALM_RB_HOST_STAGING )
        !$ACC END HOST_DATA
+#endif
 
+#if !defined( PALM_RB_HOST_STAGING )
        !$ACC HOST_DATA USE_DEVICE(recvbuf1) IF(lacc)
+#endif
        CALL MPI_IRECV( recvbuf1(nzb+1,0), bufsize, MPI_REAL, north_pe, req_count, communicator,    &
                        req(req_count+2), ierr )
+#if !defined( PALM_RB_HOST_STAGING )
        !$ACC END HOST_DATA
+#endif
 !
 !--    Send north boundary, receive south one (asynchronous)
+#if !defined( PALM_RB_HOST_STAGING )
        !$ACC HOST_DATA USE_DEVICE(sendbuf2) IF(lacc)
+#endif
        CALL MPI_ISEND( sendbuf2(nzb+1,0), bufsize, MPI_REAL, north_pe, req_count+1, communicator,  &
                        req(req_count+3), ierr )
+#if !defined( PALM_RB_HOST_STAGING )
        !$ACC END HOST_DATA
+#endif
 
+#if !defined( PALM_RB_HOST_STAGING )
        !$ACC HOST_DATA USE_DEVICE(recvbuf2) IF(lacc)
+#endif
        CALL MPI_IRECV( recvbuf2(nzb+1,0), bufsize, MPI_REAL, south_pe, req_count+1, communicator,  &
                        req(req_count+4), ierr )
+#if !defined( PALM_RB_HOST_STAGING )
        !$ACC END HOST_DATA
+#endif
 
        CALL MPI_WAITALL( 4, req, wait_stat, ierr )
+#if defined( PALM_RB_HOST_STAGING )
+       !$ACC UPDATE DEVICE(recvbuf1) IF(lacc .AND. north_pe /= MPI_PROC_NULL)
+       !$ACC UPDATE DEVICE(recvbuf2) IF(lacc .AND. south_pe /= MPI_PROC_NULL)
+#endif
 
 !
 !--    Unpack received south/north boundary data.
@@ -922,8 +961,12 @@
 
        ENDIF
 
+#if defined(PALM_RB_HOST_STAGING)
+       NULLIFY(recvbuf1,recvbuf2,sendbuf1,sendbuf2)
+#else
        !$ACC END DATA
        DEALLOCATE( recvbuf1, recvbuf2, sendbuf1, sendbuf2 )
+#endif
 
     ENDIF
 
@@ -965,11 +1008,15 @@
 !--    Allocate buffers for sending / receiving ghost layer data.
        nyn_rb = ( nyn - nys ) / 2
 
+#if defined(PALM_RB_HOST_STAGING)
+       CALL rb_buffers_get(2,nzb+1,nzt,-1,nyn_rb+1,lacc,recvbuf1,recvbuf2,sendbuf1,sendbuf2)
+#else
        ALLOCATE( recvbuf1(nzb+1:nzt,-1:nyn_rb+1) )
        ALLOCATE( recvbuf2(nzb+1:nzt,-1:nyn_rb+1) )
        ALLOCATE( sendbuf1(nzb+1:nzt,-1:nyn_rb+1) )
        ALLOCATE( sendbuf2(nzb+1:nzt,-1:nyn_rb+1) )
        !$ACC DATA CREATE(recvbuf1,recvbuf2,sendbuf1,sendbuf2) IF(lacc)
+#endif
 
        bufsize = ( nzt - nzb ) * ( nyn_rb + 3 )
 
@@ -1011,28 +1058,52 @@
 
 !
 !--    Send left boundary, receive right one (asynchronous), only red or black points
+#if defined( PALM_RB_HOST_STAGING )
+       !$ACC UPDATE SELF(sendbuf1) IF(lacc .AND. left_pe /= MPI_PROC_NULL)
+       !$ACC UPDATE SELF(sendbuf2) IF(lacc .AND. right_pe /= MPI_PROC_NULL)
+#endif
+#if !defined( PALM_RB_HOST_STAGING )
        !$ACC HOST_DATA USE_DEVICE(sendbuf1) IF(lacc)
+#endif
        CALL MPI_ISEND( sendbuf1(nzb+1,-1), bufsize, MPI_REAL, left_pe, req_count, communicator,    &
                        req(req_count+1), ierr )
+#if !defined( PALM_RB_HOST_STAGING )
        !$ACC END HOST_DATA
+#endif
 
+#if !defined( PALM_RB_HOST_STAGING )
        !$ACC HOST_DATA USE_DEVICE(recvbuf1) IF(lacc)
+#endif
        CALL MPI_IRECV( recvbuf1(nzb+1,-1), bufsize, MPI_REAL, right_pe, req_count, communicator,   &
                        req(req_count+2), ierr )
+#if !defined( PALM_RB_HOST_STAGING )
        !$ACC END HOST_DATA
+#endif
 !
 !--    Send right boundary, receive left one (asynchronous)
+#if !defined( PALM_RB_HOST_STAGING )
        !$ACC HOST_DATA USE_DEVICE(sendbuf2) IF(lacc)
+#endif
        CALL MPI_ISEND( sendbuf2(nzb+1,-1), bufsize, MPI_REAL, right_pe, req_count+1, communicator, &
                        req(req_count+3), ierr )
+#if !defined( PALM_RB_HOST_STAGING )
        !$ACC END HOST_DATA
+#endif
 
+#if !defined( PALM_RB_HOST_STAGING )
        !$ACC HOST_DATA USE_DEVICE(recvbuf2) IF(lacc)
+#endif
        CALL MPI_IRECV( recvbuf2(nzb+1,-1), bufsize, MPI_REAL, left_pe, req_count+1, communicator,  &
                        req(req_count+4), ierr )
+#if !defined( PALM_RB_HOST_STAGING )
        !$ACC END HOST_DATA
+#endif
 
        CALL MPI_WAITALL( 4, req, wait_stat, ierr )
+#if defined( PALM_RB_HOST_STAGING )
+       !$ACC UPDATE DEVICE(recvbuf1) IF(lacc .AND. right_pe /= MPI_PROC_NULL)
+       !$ACC UPDATE DEVICE(recvbuf2) IF(lacc .AND. left_pe /= MPI_PROC_NULL)
+#endif
 
 !
 !--    Unpack received left/right boundary data.
@@ -1086,8 +1157,12 @@
 
        ENDIF
 
+#if defined(PALM_RB_HOST_STAGING)
+       NULLIFY(recvbuf1,recvbuf2,sendbuf1,sendbuf2)
+#else
        !$ACC END DATA
        DEALLOCATE( recvbuf1, recvbuf2, sendbuf1, sendbuf2 )
+#endif
 
     ENDIF   ! npex == 1
 

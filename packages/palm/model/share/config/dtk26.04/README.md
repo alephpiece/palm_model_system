@@ -1,6 +1,6 @@
-# Building and running on BW-series DCUs with DTK 26.04
+# Building and running on DCUs with DTK 26.04
 
-This directory contains an OpenACC build template for BW-series DCUs with
+This directory contains an OpenACC build template for DCUs with
 DTK 26.04, GPU optimizations, and hipFFT support. Run the commands below inside
 your container. Adjust the paths and target architecture for your installation,
 and set `enable_openacc = .TRUE.` in the case input to run on the GPU.
@@ -13,7 +13,7 @@ Required software: DTK 26.04 (flang, OpenACC, and hipFFT), Open MPI built with
 that Fortran toolchain, compatible parallel NetCDF-C and NetCDF-Fortran libraries,
 GCC, make, Python 3, and Bash.
 
-The template defaults to BW100 (`gfx936`). For other BW models, update
+The template defaults to BW100 (`gfx936`). For other DCU models, update
 `--offload-arch` in both the compiler and linker options to match the device.
 Use your installation paths in the template and environment variables:
 
@@ -121,11 +121,12 @@ palmrun -r test -c dcu -a 'd3#' -X 8 -T 1 -O 8 -w 1 -v -z
 ```
 
 For two GPUs and four MPI ranks, set both `npex` and `npey` to 2 in the input.
+The following launch uses UCX on a single DCU node.
 Replace `%execute_command` with the line below, using your source directory
 in place of `/absolute/path/to/palm`:
 
 ```text
-%execute_command /opt/mpi-flang/bin/mpirun --allow-run-as-root --mca coll ^hcoll -n {{mpi_tasks}} /absolute/path/to/palm/packages/palm/model/share/config/dtk26.04/rank-gpu.sh ./palm
+%execute_command env UCX_MEMTYPE_CACHE=n /opt/mpi-flang/bin/mpirun --allow-run-as-root --mca coll ^hcoll --mca pml ucx --mca coll_sm_priority 100 --mca io romio341 -n {{mpi_tasks}} /absolute/path/to/palm/packages/palm/model/share/config/dtk26.04/rank-gpu.sh ./palm
 ```
 
 ```bash
@@ -137,6 +138,20 @@ palmrun -r test -c dcu -a 'd3#' -X 32 -T 4 -O 8 -w 4 -v -z
 0 and 2 to the first GPU, and ranks 1 and 3 to the second. Each rank sees one GPU
 before MPI initialization, so PALM reports `ACC-devices per node: 1`.
 Choose CPU bindings that match the container's available CPUs and NUMA layout.
+
+This launch uses UCX for MPI point-to-point traffic, the `sm` component for
+collectives, and ROMIO for MPI-I/O. It requires ROCm-enabled MPI/UCX and the `sm` and
+`romio341` components. `UCX_MEMTYPE_CACHE=n` avoids cached misclassification of
+device buffers. Set it before `mpirun`, as shown above. These MPI settings are
+independent of PALM's pressure HIP IPC path. Changing collective algorithms can
+change floating-point reduction order and the subsequent solution trajectory.
+
+For an OB1 control, use the following launch command with the same resource
+and GPU settings:
+
+```text
+%execute_command /opt/mpi-flang/bin/mpirun --allow-run-as-root --mca coll ^hcoll --mca pml ob1 --mca coll_sm_priority 0 --mca io ompio -n {{mpi_tasks}} /absolute/path/to/palm/packages/palm/model/share/config/dtk26.04/rank-gpu.sh ./palm
+```
 
 The launcher and rank scripts must preserve the `OMP_NUM_THREADS` value set
 by `-O`. In DTK 26.04, this value also affects the default width of some OpenACC
@@ -162,9 +177,19 @@ is in `%cpp_options`.
 | Surface, flux, and mixed-moment statistics | `PALM_SURFACE_STATS_REDUCTION`, `PALM_FLOW_FLUX_SHARDS`, `PALM_FLOW_MIXED_SHARDS` |
 | Humidity, u/v/potential-temperature, and perturbation-energy statistics | `PALM_FLOW_HUMIDITY_SHARDS`, `PALM_FLOW_UVPT_SHARDS`, `PALM_FLOW_ENERGY_SHARDS` |
 | Pressure mean, soil, and TCM | `PALM_PRESSURE_MEAN_SHARDS`, `PALM_SOIL_CONDUCTIVITY_MAPPING`, `PALM_TCM_DIFFUSIVITY_ORGANIZATION` |
+| Red-black halo exchange through persistent host buffers | `PALM_RB_HOST_STAGING` |
+| Single-node pressure halo reads through HIP IPC | `PALM_RB_IPC` |
 | Perturbation-energy mapping and TKE shear terms | `PALM_FLOW_ENERGY_MAPPING`, `PALM_TKE_SHEAR_DIAGONAL`, `PALM_TKE_SHEAR_VECTOR64` |
 | Equation vector width and humidity update | `PALM_EQUATION_VECTOR64`, `PALM_Q_UPDATE_COLLAPSE3` |
 | GPU FFT | `__hip_fft`, linked with hipFFT. Select only one of `__hip_fft`, `__cuda_fft`, and `__fftw`. |
+
+`PALM_RB_IPC` selects peer-device pressure reads for the GPU red-black path on
+one node with a uniform 2×2 decomposition, one multigrid level, even vertical
+extent, no coarse-grid aggregation and no shifted periodic boundary. It preserves
+the original colored halo and corner updates. Other layouts or unavailable HIP
+IPC export/import capability use the existing host-staging exchange. The choice
+and peer mappings last for one pressure solve. Remove `-DPALM_RB_IPC` and rebuild
+to use host staging throughout. CPU and CUDA configurations keep their existing paths.
 
 ### FFT execution controls
 
