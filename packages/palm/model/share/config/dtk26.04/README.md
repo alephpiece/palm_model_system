@@ -10,8 +10,9 @@ The main walkthrough covers GPU execution. Section 6 describes CPU execution.
 ## 1. Prepare the environment
 
 Required software: DTK 26.04 (flang, OpenACC, and hipFFT), Open MPI built with
-that Fortran toolchain, compatible parallel NetCDF-C and NetCDF-Fortran libraries,
-GCC, make, Python 3, and Bash.
+that Fortran toolchain, ROCm-enabled UCX, compatible parallel NetCDF-C and
+NetCDF-Fortran libraries, GCC, make, Python 3, and Bash. The GPU launch defaults
+also require Open MPI's `sm` collective and `romio341` MPI-I/O components.
 
 The template defaults to BW100 (`gfx936`). For other DCU models, update
 `--offload-arch` in both the compiler and linker options to match the device.
@@ -23,7 +24,7 @@ Use your installation paths in the template and environment variables:
 | Open MPI | `/opt/mpi-flang` |
 | NetCDF-Fortran | `/opt/netcdf-fortran-flang` |
 | Parallel NetCDF-C | `/opt/netcdf-parallel` |
-| UCX (if used by MPI) | `/opt/ucx` |
+| UCX | `/opt/ucx` |
 
 ```bash
 export PATH=/opt/mpi-flang/bin:/opt/dtk-26.04/llvm/bin:/opt/netcdf-parallel/bin:$PATH
@@ -121,9 +122,9 @@ palmrun -r test -c dcu -a 'd3#' -X 8 -T 1 -O 8 -w 1 -v -z
 ```
 
 For two GPUs and four MPI ranks, set both `npex` and `npey` to 2 in the input.
-The following launch uses UCX on a single DCU node.
-Replace `%execute_command` with the line below, using your source directory
-in place of `/absolute/path/to/palm`:
+Keep the template's communication options and insert `rank-gpu.sh` before
+`./palm` in `%execute_command`. The resulting line is shown below, using
+`/absolute/path/to/palm` for your source directory:
 
 ```text
 %execute_command env UCX_MEMTYPE_CACHE=n /opt/mpi-flang/bin/mpirun --allow-run-as-root --mca coll ^hcoll --mca pml ucx --mca coll_sm_priority 100 --mca io romio341 -n {{mpi_tasks}} /absolute/path/to/palm/packages/palm/model/share/config/dtk26.04/rank-gpu.sh ./palm
@@ -139,15 +140,14 @@ palmrun -r test -c dcu -a 'd3#' -X 32 -T 4 -O 8 -w 4 -v -z
 before MPI initialization, so PALM reports `ACC-devices per node: 1`.
 Choose CPU bindings that match the container's available CPUs and NUMA layout.
 
-This launch uses UCX for MPI point-to-point traffic, the `sm` component for
-collectives, and ROMIO for MPI-I/O. It requires ROCm-enabled MPI/UCX and the `sm` and
-`romio341` components. `UCX_MEMTYPE_CACHE=n` avoids cached misclassification of
-device buffers. Set it before `mpirun`, as shown above. These MPI settings are
+The GPU template defaults to UCX for MPI point-to-point traffic, the `sm`
+component for collectives, and ROMIO for MPI-I/O. `UCX_MEMTYPE_CACHE=n`, set before
+`mpirun`, avoids cached misclassification of device buffers. These MPI settings are
 independent of PALM's pressure HIP IPC path. Changing collective algorithms can
 change floating-point reduction order and the subsequent solution trajectory.
 
-For an OB1 control, use the following launch command with the same resource
-and GPU settings:
+For an OB1 control, replace the launch command while keeping the same resource
+and GPU settings. The four-rank example becomes:
 
 ```text
 %execute_command /opt/mpi-flang/bin/mpirun --allow-run-as-root --mca coll ^hcoll --mca pml ob1 --mca coll_sm_priority 0 --mca io ompio -n {{mpi_tasks}} /absolute/path/to/palm/packages/palm/model/share/config/dtk26.04/rank-gpu.sh ./palm
