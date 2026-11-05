@@ -1996,6 +1996,8 @@
  SUBROUTINE stg_generate_seed_yz( n_y, n_z, b_y, b_z, f_n, id_left, id_right )
 
     INTEGER(iwp)           ::  id_left     !< core ids at respective boundaries
+    INTEGER(iwp) ::  k_start  !< first target height computed by this process
+    INTEGER(iwp) ::  k_end    !< last target height computed by this process
     INTEGER(iwp), OPTIONAL ::  id_right    !< core ids at respective boundaries
     INTEGER(iwp)           ::  j           !< loop index in y-direction
     INTEGER(iwp)           ::  jj          !< loop index in y-direction
@@ -2017,6 +2019,7 @@
     REAL(wp), DIMENSION(nzb:nzt+1,nys:nyn)             ::  f_n    !<  velocity seed
 
     REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  rand_it  !< global array of random numbers
+    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  rand_filtered  !< vertically filtered random field
 !
 !-- Generate random numbers using the parallel random generator. The set of random numbers are
 !-- modified to have an average of 0 and unit variance. Note, at the end the random number array
@@ -2099,15 +2102,29 @@
 !-- communication. In the second option, which performs better when the turbulent length scales
 !-- are parametrized and thus the loops are smaller, the seeds are computed locally and no
 !-- communication is necessary.
+!
+!-- Filter vertically first: coefficients depend on the target height, so the order matters.
+!-- Reuse each vertical sum for all horizontal targets that consume it. The temporary includes
+!-- the horizontal extension needed by the second pass, and only this process's target heights.
+    k_start = MERGE( nzb, nzb_x_stg, compute_velocity_seeds_local )
+    k_end   = MERGE( nzt+1, nzt_x_stg+1, compute_velocity_seeds_local )
+    ALLOCATE( rand_filtered(k_start:k_end,nys-mergp_y:nyn+mergp_y) )
+    DO  k = k_start, k_end
+       DO  j = nys - n_y(k), nyn + n_y(k)
+          rand_filtered(k,j) = 0.0_wp
+          DO  kk = -n_z(k), n_z(k)
+             rand_filtered(k,j) = rand_filtered(k,j) + b_z(kk,k) * rand_it(k+kk,j)
+          ENDDO
+       ENDDO
+    ENDDO
+!
     IF ( compute_velocity_seeds_local )  THEN
 
        f_n  = 0.0_wp
        DO  j = nys, nyn
           DO  k = nzb, nzt+1
              DO  jj = -n_y(k), n_y(k)
-                DO  kk = -n_z(k), n_z(k)
-                   f_n(k,j) = f_n(k,j) + b_y(jj,k) * b_z(kk,k) * rand_it(k+kk,j+jj)
-                ENDDO
+                f_n(k,j) = f_n(k,j) + b_y(jj,k) * rand_filtered(k,j+jj)
              ENDDO
           ENDDO
        ENDDO
@@ -2118,9 +2135,7 @@
        DO  j = nys, nyn
           DO  k = nzb_x_stg, nzt_x_stg+1
              DO  jj = -n_y(k), n_y(k)
-                DO  kk = -n_z(k), n_z(k)
-                   f_n_l(k,j) = f_n_l(k,j) + b_y(jj,k) * b_z(kk,k) * rand_it(k+kk,j+jj)
-                ENDDO
+                f_n_l(k,j) = f_n_l(k,j) + b_y(jj,k) * rand_filtered(k,j+jj)
              ENDDO
           ENDDO
        ENDDO
@@ -2152,7 +2167,7 @@
 
     ENDIF
 
-    DEALLOCATE( rand_it )
+    DEALLOCATE( rand_it, rand_filtered )
 
     CALL cpu_log( log_point_s(31), 'STG f_n factors', 'stop' )
 
@@ -2171,6 +2186,8 @@
  SUBROUTINE stg_generate_seed_xz( n_x, n_z, b_x, b_z, f_n, id_south, id_north )
 
     INTEGER(iwp) :: i           !< loop index in x-direction
+    INTEGER(iwp) ::  k_start  !< first target height computed by this process
+    INTEGER(iwp) ::  k_end    !< last target height computed by this process
     INTEGER(iwp) :: id_north    !< core ids at respective boundaries
     INTEGER(iwp) :: id_south    !< core ids at respective boundaries
     INTEGER(iwp) :: ii          !< loop index in x-direction
@@ -2192,6 +2209,7 @@
     REAL(wp), DIMENSION(nzb:nzt+1,nxl:nxr)             :: f_n     !<  velocity seed
 
     REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  rand_it   !< global array of random numbers
+    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  rand_filtered  !< vertically filtered random field
 
 !
 !-- Generate random numbers using the parallel random generator. The set of random numbers are
@@ -2275,15 +2293,29 @@
 !-- length scales), so that gain by parallelization exceeds the costs by the subsequent communication.
 !-- In the second option, which performs better when the turbulent length scales are parametrized
 !-- and thus the loops are smaller, the seeds are computed locally and no communication is necessary.
+!
+!-- Filter vertically first: coefficients depend on the target height, so the order matters.
+!-- Reuse each vertical sum for all horizontal targets that consume it. The temporary includes
+!-- the horizontal extension needed by the second pass, and only this process's target heights.
+    k_start = MERGE( nzb, nzb_y_stg, compute_velocity_seeds_local )
+    k_end   = MERGE( nzt+1, nzt_y_stg+1, compute_velocity_seeds_local )
+    ALLOCATE( rand_filtered(k_start:k_end,nxl-mergp_x:nxr+mergp_x) )
+    DO  k = k_start, k_end
+       DO  i = nxl - n_x(k), nxr + n_x(k)
+          rand_filtered(k,i) = 0.0_wp
+          DO  kk = -n_z(k), n_z(k)
+             rand_filtered(k,i) = rand_filtered(k,i) + b_z(kk,k) * rand_it(k+kk,i)
+          ENDDO
+       ENDDO
+    ENDDO
+!
     IF ( compute_velocity_seeds_local )  THEN
 
        f_n  = 0.0_wp
        DO  i = nxl, nxr
           DO  k = nzb, nzt+1
              DO  ii = -n_x(k), n_x(k)
-                DO  kk = -n_z(k), n_z(k)
-                   f_n(k,i) = f_n(k,i) + b_x(ii,k) * b_z(kk,k) * rand_it(k+kk,i+ii)
-                ENDDO
+                f_n(k,i) = f_n(k,i) + b_x(ii,k) * rand_filtered(k,i+ii)
              ENDDO
           ENDDO
        ENDDO
@@ -2294,9 +2326,7 @@
        DO  i = nxl, nxr
           DO  k = nzb_y_stg, nzt_y_stg+1
              DO  ii = -n_x(k), n_x(k)
-                DO  kk = -n_z(k), n_z(k)
-                   f_n_l(k,i) = f_n_l(k,i) + b_x(ii,k) * b_z(kk,k) * rand_it(k+kk,i+ii)
-                ENDDO
+                f_n_l(k,i) = f_n_l(k,i) + b_x(ii,k) * rand_filtered(k,i+ii)
              ENDDO
           ENDDO
        ENDDO
@@ -2326,7 +2356,7 @@
 
     ENDIF
 
-    DEALLOCATE( rand_it )
+    DEALLOCATE( rand_it, rand_filtered )
 
     CALL cpu_log( log_point_s(31), 'STG f_n factors', 'stop' )
 
