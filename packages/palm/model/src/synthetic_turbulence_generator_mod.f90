@@ -1996,12 +1996,12 @@
  SUBROUTINE stg_generate_seed_yz( n_y, n_z, b_y, b_z, f_n, id_left, id_right )
 
     INTEGER(iwp)           ::  id_left     !< core ids at respective boundaries
-    INTEGER(iwp) ::  k_start  !< first target height computed by this process
-    INTEGER(iwp) ::  k_end    !< last target height computed by this process
     INTEGER(iwp), OPTIONAL ::  id_right    !< core ids at respective boundaries
     INTEGER(iwp)           ::  j           !< loop index in y-direction
     INTEGER(iwp)           ::  jj          !< loop index in y-direction
     INTEGER(iwp)           ::  k           !< loop index in z-direction
+    INTEGER(iwp)           ::  k_end       !< last target height computed by this process
+    INTEGER(iwp)           ::  k_start     !< first target height computed by this process
     INTEGER(iwp)           ::  kk          !< loop index in z-direction
     INTEGER(iwp)           ::  send_count  !< send count for MPI_GATHERV
 
@@ -2018,8 +2018,8 @@
     REAL(wp), DIMENSION(nzb_x_stg:nzt_x_stg+1,nys:nyn) ::  f_n_l  !<  local velocity seed
     REAL(wp), DIMENSION(nzb:nzt+1,nys:nyn)             ::  f_n    !<  velocity seed
 
-    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  rand_it  !< global array of random numbers
     REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  rand_filtered  !< vertically filtered random field
+    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  rand_it        !< global array of random numbers
 !
 !-- Generate random numbers using the parallel random generator. The set of random numbers are
 !-- modified to have an average of 0 and unit variance. Note, at the end the random number array
@@ -2096,7 +2096,7 @@
 !
 !-- Generate velocity seed following Eq.6 of Xie and Castro (2008). There are two options. In the
 !-- first one, the computation of the seeds is distributed to all processes along the communicator
-!-- comm1dy and gathered on the leftmost and, if necessary, on the rightmost process. For huge
+!-- comm1dx and gathered on the leftmost and, if necessary, on the rightmost process. For huge
 !-- length scales the computational effort can become quite huge (it scales with the turbulent
 !-- length scales), so that gain by parallelization exceeds the costs by the subsequent
 !-- communication. In the second option, which performs better when the turbulent length scales
@@ -2191,12 +2191,12 @@
  SUBROUTINE stg_generate_seed_xz( n_x, n_z, b_x, b_z, f_n, id_south, id_north )
 
     INTEGER(iwp) :: i           !< loop index in x-direction
-    INTEGER(iwp) ::  k_start  !< first target height computed by this process
-    INTEGER(iwp) ::  k_end    !< last target height computed by this process
     INTEGER(iwp) :: id_north    !< core ids at respective boundaries
     INTEGER(iwp) :: id_south    !< core ids at respective boundaries
     INTEGER(iwp) :: ii          !< loop index in x-direction
     INTEGER(iwp) :: k           !< loop index in z-direction
+    INTEGER(iwp) :: k_end       !< last target height computed by this process
+    INTEGER(iwp) :: k_start     !< first target height computed by this process
     INTEGER(iwp) :: kk          !< loop index in z-direction
     INTEGER(iwp) :: send_count  !< send count for MPI_GATHERV
 
@@ -2213,8 +2213,8 @@
     REAL(wp), DIMENSION(nzb_y_stg:nzt_y_stg+1,nxl:nxr) :: f_n_l   !<  local velocity seed
     REAL(wp), DIMENSION(nzb:nzt+1,nxl:nxr)             :: f_n     !<  velocity seed
 
-    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  rand_it   !< global array of random numbers
     REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  rand_filtered  !< vertically filtered random field
+    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  rand_it        !< global array of random numbers
 
 !
 !-- Generate random numbers using the parallel random generator. The set of random numbers are
@@ -2293,7 +2293,7 @@
 !
 !-- Generate velocity seed following Eq.6 of Xie and Castro (2008). There are two options. In the
 !-- first one, the computation of the seeds is distributed to all processes along the communicator
-!-- comm1dx and gathered on the southmost and, if necessary, on the northmost process. For huge
+!-- comm1dy and gathered on the southmost and, if necessary, on the northmost process. For huge
 !-- length scales the computational effort can become quite huge (it scales with the turbulent
 !-- length scales), so that gain by parallelization exceeds the costs by the subsequent communication.
 !-- In the second option, which performs better when the turbulent length scales are parametrized
