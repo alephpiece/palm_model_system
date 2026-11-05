@@ -177,10 +177,10 @@
     INTEGER(iwp) ::  mergp_xy           !< maximum horizontal length scale (in gp)
     INTEGER(iwp) ::  mergp_y            !< maximum length scale in y (in gp)
     INTEGER(iwp) ::  mergp_z            !< maximum length scale in z (in gp)
-    INTEGER(iwp) ::  nzb_x_stg          !< lower bound of z coordinate (required for transposing z on PEs along x)
-    INTEGER(iwp) ::  nzt_x_stg          !< upper bound of z coordinate (required for transposing z on PEs along x)
-    INTEGER(iwp) ::  nzb_y_stg          !< lower bound of z coordinate (required for transposing z on PEs along y)
-    INTEGER(iwp) ::  nzt_y_stg          !< upper bound of z coordinate (required for transposing z on PEs along y)
+    INTEGER(iwp) ::  nzb_x_stg = 0      !< lower bound of z coordinate (required for transposing z on PEs along x)
+    INTEGER(iwp) ::  nzt_x_stg = 0      !< upper bound of z coordinate (required for transposing z on PEs along x)
+    INTEGER(iwp) ::  nzb_y_stg = 0      !< lower bound of z coordinate (required for transposing z on PEs along y)
+    INTEGER(iwp) ::  nzt_y_stg = 0      !< upper bound of z coordinate (required for transposing z on PEs along y)
 #if defined( __parallel )
     INTEGER(iwp) ::  stg_type_xz        !< MPI type for full z range
     INTEGER(iwp) ::  stg_type_xz_small  !< MPI type for small z range
@@ -2106,8 +2106,13 @@
 !-- Filter vertically first: coefficients depend on the target height, so the order matters.
 !-- Reuse each vertical sum for all horizontal targets that consume it. The temporary includes
 !-- the horizontal extension needed by the second pass, and only this process's target heights.
-    k_start = MERGE( nzb, nzb_x_stg, compute_velocity_seeds_local )
-    k_end   = MERGE( nzt+1, nzt_x_stg+1, compute_velocity_seeds_local )
+    IF ( compute_velocity_seeds_local )  THEN
+       k_start = nzb
+       k_end   = nzt + 1
+    ELSE
+       k_start = nzb_x_stg
+       k_end   = nzt_x_stg + 1
+    ENDIF
     ALLOCATE( rand_filtered(k_start:k_end,nys-mergp_y:nyn+mergp_y) )
     DO  k = k_start, k_end
        DO  j = nys - n_y(k), nyn + n_y(k)
@@ -2297,8 +2302,13 @@
 !-- Filter vertically first: coefficients depend on the target height, so the order matters.
 !-- Reuse each vertical sum for all horizontal targets that consume it. The temporary includes
 !-- the horizontal extension needed by the second pass, and only this process's target heights.
-    k_start = MERGE( nzb, nzb_y_stg, compute_velocity_seeds_local )
-    k_end   = MERGE( nzt+1, nzt_y_stg+1, compute_velocity_seeds_local )
+    IF ( compute_velocity_seeds_local )  THEN
+       k_start = nzb
+       k_end   = nzt + 1
+    ELSE
+       k_start = nzb_y_stg
+       k_end   = nzt_y_stg + 1
+    ENDIF
     ALLOCATE( rand_filtered(k_start:k_end,nxl-mergp_x:nxr+mergp_x) )
     DO  k = k_start, k_end
        DO  i = nxl - n_x(k), nxr + n_x(k)
